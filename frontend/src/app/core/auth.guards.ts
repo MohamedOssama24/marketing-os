@@ -11,5 +11,5 @@ export const authGuard: CanActivateFn = () => {
 /** Login e registrazione: chi è già autenticato va direttamente ai progetti. */
 export const guestGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
-  return auth.isLoggedIn() ? inject(Router).createUrlTree(['/projects']) : true;
+  return auth.isLoggedIn() ? inject(Router).createUrlTree(['/dashboard']) : true;
 };

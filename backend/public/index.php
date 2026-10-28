@@ -54,6 +54,14 @@ $router->add('PATCH', '/api/v1/content/{id}', [ContentController::class, 'update
 $router->add('POST', '/api/v1/content/{id}/submit', [ContentController::class, 'submit']);
 $router->add('POST', '/api/v1/content/{id}/approve', [ContentController::class, 'approve']);
 $router->add('POST', '/api/v1/content/{id}/reject', [ContentController::class, 'reject']);
+$router->add('POST', '/api/v1/content/{id}/schedule', [ContentController::class, 'schedule']);
+$router->add('GET', '/api/v1/approvals', [ContentController::class, 'pendingApproval']);
+
+$router->add('POST', '/api/v1/onboarding/analyze', [CampaignController::class, 'analyzeSite']);
+$router->add('POST', '/api/v1/brands/{brandId}/campaigns', [CampaignController::class, 'create']);
+
+$router->add('GET', '/api/v1/dashboard', [DashboardController::class, 'dashboard']);
+$router->add('GET', '/api/v1/calendar', [DashboardController::class, 'calendar']);
 
 $router->add('GET', '/api/v1/jobs/{id}', [Jobs::class, 'show']);
 

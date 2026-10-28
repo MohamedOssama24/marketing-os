@@ -111,6 +111,32 @@ Flusso: `draft` → `POST /content/{id}/submit` (editor+) → `in_review` → `P
 
 Il worker usa Claude se è impostata `ANTHROPIC_API_KEY`; altrimenti crea bozze di esempio, così il flusso si può provare senza costi.
 
+## Dal sito alla campagna
+
+`POST /onboarding/analyze` (editor+) — `{ "url": "pasticceriarossi.it" }`. Avvia un lavoro `analyze_site`: il server legge la home e fino a 3 pagine interne (chi siamo, prodotti, servizi…), estrae colori dal CSS e un'immagine da usare come logo, poi l'AI compila il brand kit. A lavoro finito `result` contiene `brand_id`, `site_colors` e `logo_found`.
+
+La lettura dei siti è protetta da SSRF: solo http(s) sulle porte 80 e 443, solo IP pubblici (ricontrollati a ogni redirect), al massimo 3 redirect, limiti di tempo e dimensione. Un indirizzo non ammesso fa fallire il lavoro con un messaggio esplicito.
+
+`POST /brands/{id}/campaigns` (editor+) — crea una campagna per il cliente e ne avvia la pianificazione. Risponde `202` con `{ project, job }`.
+
+```json
+{ "goal": "Far conoscere le torte autunnali", "weeks": 4, "posts_per_week": 3, "channels": ["instagram", "facebook"], "start_date": "2026-11-02" }
+```
+
+Durata 1–4 settimane, 1–5 post a settimana, massimo 16 post; canali tra `instagram`, `facebook`, `linkedin`, `blog`, `email`. Il lavoro salva la strategia in `project.strategy` e crea i post in bozza con data (`scheduled_at`) e grafica (`visual`).
+
+Ogni contenuto può avere `visual`: `{ "headline", "subheadline", "badge", "layout": "bold" | "light" | "photo", "asset_id" }`. Si modifica con `PATCH /content/{id}`; `asset_id` deve essere un'immagine della libreria dell'organizzazione.
+
+## Dashboard, calendario e approvazioni
+
+`GET /dashboard` — numeri principali (clienti, campagne attive, post del mese, contenuti da approvare, lavori AI del mese) e i post della settimana corrente.
+
+`GET /calendar?from=AAAA-MM-GG&to=AAAA-MM-GG` — post programmati nell'intervallo (massimo 62 giorni), con nome e colore del cliente.
+
+`POST /content/{id}/schedule` (editor+) — `{ "scheduled_at": "2026-11-05 18:30" }` oppure `null`. Non si applica ai contenuti pubblicati.
+
+`GET /approvals` — contenuti `in_review` di tutta l'organizzazione, con nome della campagna e cliente.
+
 ## Limiti di accesso
 
 - Login: 5 tentativi falliti per email e IP, 30 per IP, in 15 minuti.

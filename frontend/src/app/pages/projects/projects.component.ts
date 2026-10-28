@@ -1,10 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { ApiService } from '../../core/api.service';
 import { Brand, Project, ProjectStatus, apiErrorMessage } from '../../core/models';
+import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   draft: 'Bozza',
@@ -17,17 +18,18 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [ReactiveFormsModule, DatePipe, CurrencyPipe, RouterLink],
+  imports: [ReactiveFormsModule, DatePipe, RouterLink, AssetPreviewComponent],
   template: `
     <div class="page-head">
       <div>
-        <h1>Progetti</h1>
-        <p class="muted">Le campagne marketing della tua organizzazione.</p>
+        <h1>Campagne</h1>
+        <p class="muted">Le campagne di tutti i tuoi clienti. Per generarne una con l'AI apri la scheda del cliente.</p>
       </div>
       @if (auth.canEdit()) {
-        <button class="btn primary" (click)="toggleForm()">
-          {{ showForm() ? 'Annulla' : '+ Nuovo progetto' }}
-        </button>
+        <div class="actions">
+          <button class="btn ghost" (click)="toggleForm()">{{ showForm() ? 'Annulla' : 'Campagna vuota' }}</button>
+          <a class="btn primary" routerLink="/clients"><i class="ti ti-sparkles" aria-hidden="true"></i> Genera con l'AI</a>
+        </div>
       }
     </div>
 
@@ -37,9 +39,9 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
         <label>Nome progetto *
           <input formControlName="name" placeholder="Es. Campagna autunno" />
         </label>
-        <label>Brand
+        <label>Cliente
           <select formControlName="brand_profile_id">
-            <option [ngValue]="null">— Nessun brand —</option>
+            <option [ngValue]="null">— Nessun cliente —</option>
             @for (b of brands(); track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
           </select>
         </label>
@@ -67,23 +69,33 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
     } @else {
       <div class="grid">
         @for (p of projects(); track p.id) {
-          <a class="card project link-card" [routerLink]="['/projects', p.id]">
+          <a class="card project link-card" [routerLink]="['/campaigns', p.id]">
             <div class="project-head">
-              <h3>{{ p.name }}</h3>
+              @if (brandOf(p.brand_profile_id); as b) {
+                <span class="client-logo small" [style.background]="b.primary_color ?? '#5B4BDB'">
+                  @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" /> } @else { {{ b.name.charAt(0) }} }
+                </span>
+              }
+              <div class="grow">
+                <h3>{{ p.name }}</h3>
+                <p class="muted small">{{ brandOf(p.brand_profile_id)?.name ?? 'Nessun cliente' }}</p>
+              </div>
               <span class="badge" [attr.data-status]="p.status">{{ statusLabels[p.status] }}</span>
             </div>
-            <p>{{ p.objective }}</p>
-            @if (brandName(p.brand_profile_id); as name) { <p class="muted small">🏷️ {{ name }}</p> }
-            @if (p.target_audience) { <p class="muted small">🎯 {{ p.target_audience }}</p> }
+            <p class="clamp">{{ p.objective }}</p>
+            <div class="progress" [title]="(p.content_approved ?? 0) + ' approvati su ' + (p.content_total ?? 0)">
+              <span [style.width.%]="percent(p)" [style.background]="brandOf(p.brand_profile_id)?.primary_color ?? '#5B4BDB'"></span>
+            </div>
             <div class="project-foot muted small">
-              <span>{{ p.budget_monthly !== null ? (+p.budget_monthly | currency: 'EUR') + '/mese' : 'Budget non definito' }}</span>
+              <span>{{ p.content_approved ?? 0 }}/{{ p.content_total ?? 0 }} approvati @if (p.content_in_review) { · {{ p.content_in_review }} in revisione }</span>
               <span>{{ p.created_at | date: 'dd/MM/yyyy' }}</span>
             </div>
           </a>
         } @empty {
           <div class="card empty">
-            <h3>Nessun progetto ancora</h3>
-            <p class="muted">Crea il primo progetto per iniziare a pianificare il marketing di un cliente.</p>
+            <i class="ti ti-speakerphone empty-icon" aria-hidden="true"></i>
+            <h3>Nessuna campagna ancora</h3>
+            <p class="muted">Apri un cliente e genera la sua prima campagna con l'AI.</p>
           </div>
         }
       </div>
@@ -125,8 +137,12 @@ export class ProjectsComponent implements OnInit {
     });
   }
 
-  brandName(id: number | null): string | null {
-    return id === null ? null : this.brands().find((b) => b.id === id)?.name ?? null;
+  brandOf(id: number | null): Brand | null {
+    return id === null ? null : this.brands().find((b) => b.id === id) ?? null;
+  }
+
+  percent(p: Project): number {
+    return p.content_total ? Math.round(((p.content_approved ?? 0) / p.content_total) * 100) : 0;
   }
 
   toggleForm(): void {

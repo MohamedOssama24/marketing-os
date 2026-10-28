@@ -1,6 +1,11 @@
 # Marketing OS — starter MVP
 
-Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx e un worker in Docker, frontend Angular 17. Include team con ruoli, brand kit, libreria file, progetti, generazione di contenuti con Claude e flusso di revisione e approvazione, con isolamento per organizzazione.
+Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx e un worker in Docker, frontend Angular 17.
+
+- **Dal sito alla campagna**: inserisci il sito di un cliente e l'AI ne ricava brand kit, colori e logo; poi genera strategia e calendario di post con grafiche nei colori del brand.
+- **Anteprime realistiche** dei post (Instagram, Facebook, LinkedIn, blog, email) con grafica esportabile in PNG.
+- **Calendario** mensile con trascinamento, **approvazioni** con note di revisione, **dashboard** della settimana.
+- Team con ruoli, libreria file, isolamento tra organizzazioni.
 
 ## Generazione con l'AI
 
@@ -26,9 +31,11 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 docker compose exec app php tests/isolation.php
 ```
 
-Verifica isolamento tra organizzazioni, ruoli, flusso di revisione, generazione in background e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 
 Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
+
+Il worker è un processo sempre attivo: dopo aver modificato il codice PHP riavvialo con `docker compose restart worker`.
 
 ## Requisiti
 

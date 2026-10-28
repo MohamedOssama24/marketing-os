@@ -50,7 +50,7 @@ export class LoginComponent {
     this.error.set(null);
     const { email, password } = this.form.getRawValue();
     this.auth.login(email, password).subscribe({
-      next: () => this.router.navigate(['/projects']),
+      next: () => this.router.navigate(['/dashboard']),
       error: (err) => {
         this.error.set(apiErrorMessage(err));
         this.loading.set(false);

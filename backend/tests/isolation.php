@@ -141,6 +141,67 @@ check('Lavoro completato', ($job['status'] ?? '') === 'done', json_encode($job))
 $generated = array_filter(req('GET', "/projects/{$projectA['id']}/content", $a['token'])[1]['data'] ?? [], fn($c) => (int)$c['ai_generated'] === 1);
 check('Create 2 bozze AI', count($generated) === 2 && array_unique(array_column($generated, 'status')) === ['draft']);
 
+function waitJob(int $id, string $token): ?array
+{
+    for ($i = 0; $i < 30; $i++) {
+        $job = req('GET', "/jobs/{$id}", $token)[1]['data'] ?? null;
+        if (in_array($job['status'] ?? '', ['done', 'failed'], true)) return $job;
+        sleep(1);
+    }
+    return $job;
+}
+
+echo "\nCampagne, calendario e approvazioni\n";
+$campaign = req('POST', "/brands/{$brandA['id']}/campaigns", $a['token'], ['goal' => 'Più ordini online', 'weeks' => 2, 'posts_per_week' => 3, 'channels' => ['instagram', 'facebook'], 'start_date' => '2030-03-04']);
+expectStatus('A crea una campagna (202)', $campaign, 202);
+expectStatus('Campagna con troppi post rifiutata', req('POST', "/brands/{$brandA['id']}/campaigns", $a['token'], ['goal' => 'X', 'weeks' => 4, 'posts_per_week' => 5]), 422);
+expectStatus('Campagna con canale non valido rifiutata', req('POST', "/brands/{$brandA['id']}/campaigns", $a['token'], ['goal' => 'X', 'channels' => ['tiktok']]), 422);
+expectStatus('B non crea campagne sul brand di A', req('POST', "/brands/{$brandA['id']}/campaigns", $b['token'], ['goal' => 'X']), 404);
+expectStatus('Viewer non crea campagne', req('POST', "/brands/{$brandA['id']}/campaigns", $viewer, ['goal' => 'X']), 403);
+$campaignJob = waitJob((int)$campaign[1]['data']['job']['id'], $a['token']);
+check('Campagna pianificata', ($campaignJob['status'] ?? '') === 'done', json_encode($campaignJob));
+$campaignId = $campaign[1]['data']['project']['id'];
+$campaignProject = req('GET', "/projects/{$campaignId}", $a['token'])[1]['data'] ?? [];
+check('Strategia salvata nel progetto', is_array($campaignProject['strategy'] ?? null) && !empty($campaignProject['strategy']['key_messages']));
+$posts = req('GET', "/projects/{$campaignId}/content", $a['token'])[1]['data'] ?? [];
+check('Creati 6 post con data e grafica', count($posts) === 6 && count(array_filter($posts, fn($p) => $p['scheduled_at'] && is_array($p['visual']))) === 6, json_encode(array_column($posts, 'scheduled_at')));
+check('Post dentro le date della campagna', $posts && min(array_column($posts, 'scheduled_at')) >= '2030-03-04' && max(array_column($posts, 'scheduled_at')) < '2030-03-18');
+
+$calendarA = req('GET', '/calendar?from=2030-03-01&to=2030-03-31', $a['token']);
+check('Calendario di A con i 6 post e il colore del brand', count($calendarA[1]['data'] ?? []) === 6 && ($calendarA[1]['data'][0]['brand_color'] ?? '') === '#5B4BDB', $calendarA[2]);
+check('Calendario di B vuoto nello stesso periodo', (req('GET', '/calendar?from=2030-03-01&to=2030-03-31', $b['token'])[1]['data'] ?? null) === []);
+expectStatus('Intervallo calendario troppo lungo rifiutato', req('GET', '/calendar?from=2030-01-01&to=2030-06-01', $a['token']), 422);
+
+$post = $posts[0];
+$moved = req('POST', "/content/{$post['id']}/schedule", $a['token'], ['scheduled_at' => '2030-03-10 09:15']);
+check('A sposta un post nel calendario', ($moved[1]['data']['scheduled_at'] ?? '') === '2030-03-10 09:15:00', $moved[2]);
+expectStatus('B non sposta i post di A', req('POST', "/content/{$post['id']}/schedule", $b['token'], ['scheduled_at' => '2030-03-11 09:00']), 404);
+expectStatus('Data non valida rifiutata', req('POST', "/content/{$post['id']}/schedule", $a['token'], ['scheduled_at' => 'domani']), 422);
+
+$visual = req('PATCH', "/content/{$post['id']}", $a['token'], ['visual' => ['headline' => 'Nuova torta', 'subheadline' => '', 'badge' => 'Novità', 'layout' => 'photo', 'asset_id' => $assetA['id']]]);
+check('A imposta la grafica con una sua foto', ($visual[1]['data']['visual']['asset_id'] ?? null) === $assetA['id'], $visual[2]);
+$assetB = req('POST', '/assets', $b['token'], null, ['file' => new CURLFile($pngPath, 'image/png', 'b.png')])[1]['data'];
+expectStatus('A non usa una foto di B', req('PATCH', "/content/{$post['id']}", $a['token'], ['visual' => ['headline' => 'X', 'layout' => 'photo', 'asset_id' => $assetB['id']]]), 422);
+expectStatus('Layout non valido rifiutato', req('PATCH', "/content/{$post['id']}", $a['token'], ['visual' => ['headline' => 'X', 'layout' => 'neon']]), 422);
+
+req('POST', "/content/{$post['id']}/submit", $a['token']);
+$approvalsA = array_column(req('GET', '/approvals', $a['token'])[1]['data'] ?? [], 'id');
+check('Il post in revisione compare nelle approvazioni di A', in_array($post['id'], $approvalsA));
+check('Approvazioni di B senza i post di A', !in_array($post['id'], array_column(req('GET', '/approvals', $b['token'])[1]['data'] ?? [], 'id')));
+
+$dashA = req('GET', '/dashboard', $a['token'])[1]['data'] ?? [];
+$dashB = req('GET', '/dashboard', $b['token'])[1]['data'] ?? [];
+check('Dashboard di A con clienti e approvazioni', ($dashA['clients'] ?? 0) === 1 && ($dashA['pending_approval'] ?? 0) >= 1, json_encode($dashA));
+check('Dashboard di B senza dati di A', ($dashB['pending_approval'] ?? -1) === 0 && ($dashB['active_campaigns'] ?? -1) === 0, json_encode($dashB));
+
+echo "\nAnalisi del sito: indirizzi interni bloccati\n";
+expectStatus('Indirizzo non valido rifiutato', req('POST', '/onboarding/analyze', $a['token'], ['url' => 'non è un sito']), 422);
+foreach (['http://nginx/', 'http://169.254.169.254/latest/meta-data/', 'http://127.0.0.1/', 'http://db:3306/'] as $internal) {
+    $job = req('POST', '/onboarding/analyze', $a['token'], ['url' => $internal]);
+    $result = waitJob((int)($job[1]['data']['id'] ?? 0), $a['token']);
+    check("Bloccato {$internal}", ($result['status'] ?? '') === 'failed' && preg_match('/non (è )?consentit|porte standard/i', $result['error'] ?? ''), json_encode($result));
+}
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

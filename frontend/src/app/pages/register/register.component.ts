@@ -58,7 +58,7 @@ export class RegisterComponent {
     this.loading.set(true);
     this.error.set(null);
     this.auth.register(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigate(['/projects']),
+      next: () => this.router.navigate(['/dashboard']),
       error: (err) => {
         this.error.set(apiErrorMessage(err));
         this.loading.set(false);

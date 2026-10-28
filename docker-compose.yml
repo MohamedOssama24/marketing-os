@@ -25,6 +25,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/var/www/html
+      - uploads:/var/www/storage
     networks: [marketing]
 
   nginx:

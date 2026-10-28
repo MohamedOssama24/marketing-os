@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 final class BrandController
 {
-    private const COLUMNS = 'id, name, website_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, created_at, updated_at';
+    public const COLUMNS = 'id, name, summary, website_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, created_at, updated_at';
 
     /** Campi testuali facoltativi del brand kit con la lunghezza massima. */
     private const TEXT_FIELDS = [
+        'summary' => 500,
         'industry' => 160,
         'audience' => 2000,
         'tone_of_voice' => 2000,

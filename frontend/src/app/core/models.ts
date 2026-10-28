@@ -57,6 +57,15 @@ export interface AuthResponse {
   data: { user: User; token: Token };
 }
 
+export interface Strategy {
+  summary: string;
+  audience: string;
+  positioning: string;
+  key_messages: string[];
+  content_pillars: string[];
+  channel_plan: string;
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -64,9 +73,14 @@ export interface Project {
   target_audience: string | null;
   budget_monthly: string | null;
   status: ProjectStatus;
+  strategy: Strategy | null;
   brand_profile_id: number | null;
   created_at: string;
   updated_at: string;
+  // Presenti solo nell'elenco
+  content_total?: number;
+  content_approved?: number;
+  content_in_review?: number;
 }
 
 export interface NewProject {
@@ -80,6 +94,7 @@ export interface NewProject {
 export interface Brand {
   id: number;
   name: string;
+  summary: string | null;
   website_url: string | null;
   industry: string | null;
   audience: string | null;
@@ -107,6 +122,17 @@ export interface Asset {
   created_at: string;
 }
 
+export type VisualLayout = 'bold' | 'light' | 'photo';
+
+/** Grafica di un post: testi sovrapposti, layout e foto facoltativa dalla libreria. */
+export interface Visual {
+  headline: string;
+  subheadline: string;
+  badge: string;
+  layout: VisualLayout;
+  asset_id: number | null;
+}
+
 export interface ContentItem {
   id: number;
   project_id: number;
@@ -114,22 +140,60 @@ export interface ContentItem {
   content_type: string;
   title: string;
   body: string;
+  visual: Visual | null;
   status: ContentStatus;
   ai_generated: number;
   job_id: number | null;
   review_note: string | null;
   reviewed_at: string | null;
+  scheduled_at: string | null;
   created_at: string;
   updated_at: string;
+  // Presenti solo nell'elenco delle approvazioni
+  project_name?: string;
+  brand_profile_id?: number | null;
+}
+
+export interface CalendarItem {
+  id: number;
+  project_id: number;
+  channel: Channel;
+  content_type: string;
+  title: string;
+  status: ContentStatus;
+  scheduled_at: string;
+  project_name: string;
+  brand_id: number | null;
+  brand_name: string | null;
+  brand_color: string | null;
+}
+
+export interface Dashboard {
+  clients: number;
+  active_campaigns: number;
+  scheduled_this_month: number;
+  pending_approval: number;
+  ai_runs_this_month: number;
+  week_start: string;
+  week: CalendarItem[];
 }
 
 export interface Job {
   id: number;
   type: string;
   status: 'queued' | 'running' | 'done' | 'failed';
-  result: { content_ids?: number[] } | null;
+  result: { content_ids?: number[]; brand_id?: number; project_id?: number; logo_found?: boolean; site_colors?: string[] } | null;
   error: string | null;
   created_at: string;
+}
+
+export interface CampaignRequest {
+  goal: string;
+  weeks: number;
+  posts_per_week: number;
+  channels: Channel[];
+  start_date: string;
+  name?: string;
 }
 
 export interface GenerateRequest {

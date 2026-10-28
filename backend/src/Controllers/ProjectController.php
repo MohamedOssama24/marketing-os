@@ -3,21 +3,39 @@ declare(strict_types=1);
 
 final class ProjectController
 {
-    private const COLUMNS = 'id, name, objective, target_audience, budget_monthly, status, brand_profile_id, created_at, updated_at';
+    public const COLUMNS = 'id, name, objective, target_audience, budget_monthly, status, strategy, brand_profile_id, created_at, updated_at';
     private const STATUSES = ['draft', 'active', 'paused', 'completed', 'archived'];
 
+    /** Elenco con il conteggio dei contenuti per stato, per le schede delle campagne. */
     public static function index(): never
     {
         $user = Auth::user();
-        $stmt = Database::connection()->prepare('SELECT ' . self::COLUMNS . ' FROM projects WHERE organization_id=? ORDER BY created_at DESC LIMIT 100');
+        $columns = implode(', ', array_map(fn($c) => 'p.' . trim($c), explode(',', self::COLUMNS)));
+        $stmt = Database::connection()->prepare("SELECT {$columns},
+                COUNT(c.id) AS content_total,
+                COALESCE(SUM(c.status='approved'), 0) AS content_approved,
+                COALESCE(SUM(c.status='in_review'), 0) AS content_in_review
+            FROM projects p LEFT JOIN content_items c ON c.project_id=p.id AND c.organization_id=p.organization_id
+            WHERE p.organization_id=? GROUP BY p.id ORDER BY p.created_at DESC LIMIT 100");
         $stmt->execute([$user['organization_id']]);
-        Http::json(['data' => $stmt->fetchAll()]);
+        Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
     }
 
     public static function show(int $id): never
     {
         $user = Auth::user();
-        Http::json(['data' => Tenant::findOrFail('projects', $id, $user['organization_id'], self::COLUMNS)]);
+        Http::json(['data' => self::find($id, $user['organization_id'])]);
+    }
+
+    public static function find(int $id, int $organizationId): array
+    {
+        return self::present(Tenant::findOrFail('projects', $id, $organizationId, self::COLUMNS));
+    }
+
+    private static function present(array $project): array
+    {
+        $project['strategy'] = $project['strategy'] === null ? null : json_decode($project['strategy'], true);
+        return $project;
     }
 
     public static function store(): never
@@ -35,7 +53,7 @@ final class ProjectController
         $stmt->execute([$user['organization_id'], $brandId, $user['id'], $name, $objective, $audience, $budget]);
         $id = (int)$pdo->lastInsertId();
         Audit::log($user, 'project.created', 'project', $id);
-        Http::json(['data' => Tenant::findOrFail('projects', $id, $user['organization_id'], self::COLUMNS)], 201);
+        Http::json(['data' => self::find($id, $user['organization_id'])], 201);
     }
 
     public static function update(int $id): never
@@ -57,7 +75,7 @@ final class ProjectController
             $stmt->execute([...array_values($fields), $id, $user['organization_id']]);
             Audit::log($user, 'project.updated', 'project', $id);
         }
-        Http::json(['data' => Tenant::findOrFail('projects', $id, $user['organization_id'], self::COLUMNS)]);
+        Http::json(['data' => self::find($id, $user['organization_id'])]);
     }
 
     private static function budget(array $data): ?string

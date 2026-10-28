@@ -3,16 +3,87 @@ declare(strict_types=1);
 
 final class ContentController
 {
-    public const CHANNELS = ['instagram', 'facebook', 'linkedin', 'blog', 'email', 'website', 'other'];
-    private const COLUMNS = 'id, project_id, channel, content_type, title, body, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, created_at, updated_at';
+    public const CHANNELS = MarketingAi::CHANNELS;
+    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, created_at, updated_at';
 
     public static function index(int $projectId): never
     {
         $user = Auth::user();
         Tenant::findOrFail('projects', $projectId, $user['organization_id'], 'id');
-        $stmt = Database::connection()->prepare('SELECT ' . self::COLUMNS . ' FROM content_items WHERE project_id=? AND organization_id=? ORDER BY created_at DESC, id DESC LIMIT 200');
+        $stmt = Database::connection()->prepare('SELECT ' . self::COLUMNS . ' FROM content_items WHERE project_id=? AND organization_id=? ORDER BY scheduled_at IS NULL, scheduled_at, created_at DESC, id DESC LIMIT 300');
         $stmt->execute([$projectId, $user['organization_id']]);
-        Http::json(['data' => $stmt->fetchAll()]);
+        Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
+    }
+
+    /** Contenuti in attesa di approvazione in tutta l'organizzazione, con progetto e brand. */
+    public static function pendingApproval(): never
+    {
+        $user = Auth::user();
+        $columns = implode(', ', array_map(fn($c) => 'c.' . trim($c), explode(',', self::COLUMNS)));
+        $stmt = Database::connection()->prepare("SELECT {$columns}, p.name AS project_name, p.brand_profile_id FROM content_items c JOIN projects p ON p.id=c.project_id AND p.organization_id=c.organization_id WHERE c.organization_id=? AND c.status='in_review' ORDER BY c.scheduled_at IS NULL, c.scheduled_at, c.updated_at LIMIT 200");
+        $stmt->execute([$user['organization_id']]);
+        Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
+    }
+
+    /** Sposta un contenuto nel calendario. I contenuti pubblicati non si spostano. */
+    public static function schedule(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if ($item['status'] === 'published') Http::json(['error' => 'invalid_state', 'message' => 'Un contenuto pubblicato non si può spostare.'], 409);
+        $data = Http::body();
+        $when = null;
+        if (($data['scheduled_at'] ?? null) !== null) {
+            $date = is_string($data['scheduled_at']) ? DateTimeImmutable::createFromFormat('!Y-m-d H:i', str_replace('T', ' ', substr($data['scheduled_at'], 0, 16))) : false;
+            if (!$date) Http::validationError("Campo 'scheduled_at' deve essere nel formato AAAA-MM-GG HH:MM.");
+            $when = $date->format('Y-m-d H:i:s');
+        }
+        $stmt = Database::connection()->prepare('UPDATE content_items SET scheduled_at=? WHERE id=? AND organization_id=?');
+        $stmt->execute([$when, $id, $user['organization_id']]);
+        Audit::log($user, 'content.scheduled', 'content_item', $id);
+        Http::json(['data' => self::find($id, $user)]);
+    }
+
+    public static function present(array $item): array
+    {
+        $item['visual'] = $item['visual'] === null ? null : json_decode($item['visual'], true);
+        return $item;
+    }
+
+    /**
+     * Valida la grafica di un post: testi brevi, layout ammesso e, se indicata, una foto della libreria.
+     * Usata anche dal worker, quindi su dati non validi tronca invece di rispondere 422 quando $strict è false.
+     */
+    public static function visual(mixed $input, int $organizationId, bool $strict = true): ?array
+    {
+        if ($input === null) return null;
+        if (!is_array($input)) {
+            if ($strict) Http::validationError("Campo 'visual' non valido.");
+            return null;
+        }
+        $limits = ['headline' => 80, 'subheadline' => 140, 'badge' => 24];
+        $visual = [];
+        foreach ($limits as $key => $max) {
+            $value = is_scalar($input[$key] ?? null) ? trim((string)$input[$key]) : '';
+            if ($strict && mb_strlen($value) > $max) Http::validationError("Campo 'visual.{$key}' troppo lungo (massimo {$max} caratteri).");
+            $visual[$key] = mb_substr($value, 0, $max);
+        }
+        $layout = $input['layout'] ?? 'bold';
+        if (!in_array($layout, MarketingAi::LAYOUTS, true)) {
+            if ($strict) Http::validationError("Campo 'visual.layout' non valido.");
+            $layout = 'bold';
+        }
+        $visual['layout'] = $layout;
+        $assetId = isset($input['asset_id']) && filter_var($input['asset_id'], FILTER_VALIDATE_INT) !== false ? (int)$input['asset_id'] : null;
+        if ($assetId !== null) {
+            $asset = Tenant::find('assets', $assetId, $organizationId, 'kind');
+            if (!$asset || $asset['kind'] !== 'image') {
+                if ($strict) Http::validationError('La foto deve essere un\'immagine della tua libreria file.');
+                $assetId = null;
+            }
+        }
+        $visual['asset_id'] = $assetId;
+        return $visual;
     }
 
     public static function store(int $projectId): never
@@ -48,6 +119,10 @@ final class ContentController
         if (array_key_exists('body', $data)) $fields['body'] = Http::requiredString($data, 'body', 20000);
         if (array_key_exists('channel', $data)) $fields['channel'] = Http::oneOf($data, 'channel', self::CHANNELS);
         if (array_key_exists('content_type', $data)) $fields['content_type'] = Http::requiredString($data, 'content_type', 80);
+        if (array_key_exists('visual', $data)) {
+            $visual = self::visual($data['visual'], $user['organization_id']);
+            $fields['visual'] = $visual === null ? null : json_encode($visual, JSON_UNESCAPED_UNICODE);
+        }
         if ($fields) {
             $fields['status'] = 'draft';
             $set = implode(', ', array_map(fn($c) => "{$c}=?", array_keys($fields)));
@@ -113,7 +188,7 @@ final class ContentController
 
     private static function find(int $id, array $user): array
     {
-        return Tenant::findOrFail('content_items', $id, $user['organization_id'], self::COLUMNS);
+        return self::present(Tenant::findOrFail('content_items', $id, $user['organization_id'], self::COLUMNS));
     }
 
     private static function optionalBody(): array

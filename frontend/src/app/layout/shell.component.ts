@@ -10,19 +10,21 @@ import { ROLE_LABELS } from '../core/models';
   template: `
     <div class="shell">
       <aside class="sidebar">
-        <div class="brand">Marketing <span>OS</span></div>
+        <div class="brand"><span class="brand-mark"><i class="ti ti-sparkles" aria-hidden="true"></i></span>Marketing <span>OS</span></div>
         <nav>
-          <a routerLink="/projects" routerLinkActive="active">Progetti</a>
-          <a routerLink="/brands" routerLinkActive="active">Brand kit</a>
-          <a routerLink="/assets" routerLinkActive="active">Libreria file</a>
-          <a routerLink="/team" routerLinkActive="active">Team</a>
+          @for (item of nav; track item.path) {
+            <a [routerLink]="item.path" routerLinkActive="active"><i class="ti" [class]="'ti ' + item.icon" aria-hidden="true"></i>{{ item.label }}</a>
+          }
         </nav>
         <div class="sidebar-user">
           @if (auth.user(); as user) {
-            <strong>{{ user.name }}</strong>
-            <small class="muted">{{ roleLabels[user.role] }}</small>
+            <span class="user-avatar">{{ user.name.charAt(0) }}</span>
+            <div class="user-info">
+              <strong>{{ user.name }}</strong>
+              <small class="muted">{{ roleLabels[user.role] }}</small>
+            </div>
           }
-          <button class="btn ghost small" (click)="auth.logout()">Esci</button>
+          <button class="icon-btn" (click)="auth.logout()" aria-label="Esci" title="Esci"><i class="ti ti-logout" aria-hidden="true"></i></button>
         </div>
       </aside>
       <main class="shell-main">
@@ -34,6 +36,15 @@ import { ROLE_LABELS } from '../core/models';
 export class ShellComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly roleLabels = ROLE_LABELS;
+  readonly nav = [
+    { path: '/dashboard', label: 'Dashboard', icon: 'ti-layout-dashboard' },
+    { path: '/clients', label: 'Clienti', icon: 'ti-building-store' },
+    { path: '/campaigns', label: 'Campagne', icon: 'ti-speakerphone' },
+    { path: '/calendar', label: 'Calendario', icon: 'ti-calendar' },
+    { path: '/approvals', label: 'Approvazioni', icon: 'ti-checks' },
+    { path: '/assets', label: 'Libreria', icon: 'ti-photo' },
+    { path: '/team', label: 'Team', icon: 'ti-users' },
+  ];
 
   ngOnInit(): void {
     this.auth.loadMe().subscribe();
