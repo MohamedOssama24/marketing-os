@@ -25,6 +25,10 @@ final class DashboardController
         $monthEnd = (new DateTimeImmutable('first day of next month'))->format('Y-m-d 00:00:00');
         $weekStart = new DateTimeImmutable('monday this week');
 
+        // Approvati con data di oggi o già passata e non ancora pubblicati: sono quelli da mandare fuori adesso.
+        $due = $pdo->prepare(str_replace('c.scheduled_at >= ? AND c.scheduled_at < ?', "c.status IN ('approved','scheduled') AND c.scheduled_at IS NOT NULL AND c.scheduled_at < ?", self::CALENDAR_SELECT) . ' LIMIT 30');
+        $due->execute([$org, (new DateTimeImmutable('tomorrow'))->format('Y-m-d 00:00:00')]);
+
         $stmt = $pdo->prepare(self::CALENDAR_SELECT . ' LIMIT 100');
         $stmt->execute([$org, $weekStart->format('Y-m-d 00:00:00'), $weekStart->modify('+7 days')->format('Y-m-d 00:00:00')]);
 
@@ -34,6 +38,8 @@ final class DashboardController
             'scheduled_this_month' => $count('SELECT COUNT(*) FROM content_items WHERE organization_id=? AND scheduled_at >= ? AND scheduled_at < ?', [$monthStart, $monthEnd]),
             'pending_approval' => $count("SELECT COUNT(*) FROM content_items WHERE organization_id=? AND status='in_review'"),
             'ai_runs_this_month' => $count("SELECT COUNT(*) FROM jobs WHERE organization_id=? AND status='done' AND created_at >= ?", [$monthStart]),
+            'published_this_month' => $count("SELECT COUNT(*) FROM content_items WHERE organization_id=? AND status='published' AND published_at >= ?", [$monthStart]),
+            'to_publish' => $due->fetchAll(),
             'week_start' => $weekStart->format('Y-m-d'),
             'week' => $stmt->fetchAll(),
         ]]);

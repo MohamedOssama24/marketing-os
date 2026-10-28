@@ -139,6 +139,16 @@ Stili grafici (`visual.layout`): `bold` colore pieno, `light` chiaro, `photo` fo
 
 `POST /projects/{id}/generate` accetta anche `asset_id`: un'immagine della libreria da usare nella grafica di tutte le varianti (stili `photo` e `split` alternati).
 
+## Pubblicazione
+
+La pubblicazione sui social avviene fuori dall'app con il kit di pubblicazione (grafica, testo, link ai profili, newsletter HTML). L'app tiene traccia di cosa è uscito.
+
+- `POST /content/{id}/publish` (editor+) — `{ "url": "https://..." }` facoltativo. Solo da `approved`; il contenuto passa a `published` con `published_at` e `published_url`.
+- `POST /content/{id}/unpublish` (editor+) — riporta un contenuto pubblicato ad `approved`.
+- `GET /dashboard` include `to_publish` (approvati con data di oggi o passata, non ancora pubblicati) e `published_this_month`.
+
+Il brand kit ha `instagram_url`, `facebook_url` e `linkedin_url`; l'analisi del sito li compila con i profili collegati dal sito.
+
 ## Eliminazioni
 
 - `DELETE /content/{id}` (editor+) — un post, se non pubblicato.

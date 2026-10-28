@@ -39,6 +39,8 @@ $handlers = [
         }
         $values['name'] ??= $site['host'];
         $values['website_url'] = $site['url'];
+        // Profili Instagram, Facebook e LinkedIn collegati dal sito, se presenti.
+        foreach ($site['socials'] as $key => $url) $values[$key] = mb_substr($url, 0, 2048);
         $pdo = Database::connection();
 
         if ($existing) {

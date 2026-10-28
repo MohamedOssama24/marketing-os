@@ -64,6 +64,9 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
               }
               @if (b.font_family) { <span class="swatch-label"><i class="ti ti-typography" aria-hidden="true"></i>{{ b.font_family }}</span> }
               @if (b.website_url) { <a class="swatch-label" [href]="b.website_url" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>{{ b.website_url }}</a> }
+              @if (b.instagram_url) { <a class="swatch-label" [href]="b.instagram_url" target="_blank" rel="noopener" title="Instagram"><i class="ti ti-brand-instagram" aria-hidden="true"></i>Instagram</a> }
+              @if (b.facebook_url) { <a class="swatch-label" [href]="b.facebook_url" target="_blank" rel="noopener" title="Facebook"><i class="ti ti-brand-facebook" aria-hidden="true"></i>Facebook</a> }
+              @if (b.linkedin_url) { <a class="swatch-label" [href]="b.linkedin_url" target="_blank" rel="noopener" title="LinkedIn"><i class="ti ti-brand-linkedin" aria-hidden="true"></i>LinkedIn</a> }
             </div>
           </div>
           @if (auth.canEdit() && !editing()) {

@@ -169,7 +169,7 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
   readonly channels = Object.entries(CHANNEL_LABELS) as [Channel, string][];
   readonly projectStatuses = Object.entries(PROJECT_STATUS_LABELS);
   readonly filters: [Filter, string][] = [
-    ['all', 'Tutti'], ['draft', 'Bozze'], ['in_review', 'In revisione'], ['rejected', 'Da rivedere'], ['approved', 'Approvati'],
+    ['all', 'Tutti'], ['draft', 'Bozze'], ['in_review', 'In revisione'], ['rejected', 'Da rivedere'], ['approved', 'Approvati'], ['published', 'Pubblicati'],
   ];
 
   project = signal<Project | null>(null);

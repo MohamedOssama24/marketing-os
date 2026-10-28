@@ -105,6 +105,8 @@ export class ApiService {
   contentItem = (id: number) => this.get<ContentItem>(`/content/${id}`);
   deleteContent = (id: number) => this.delete(`/content/${id}`);
   rewriteContent = (id: number, instruction: string) => this.post<Job>(`/content/${id}/rewrite`, { instruction });
+  publishContent = (id: number, url?: string | null) => this.post<ContentItem>(`/content/${id}/publish`, url ? { url } : {});
+  unpublishContent = (id: number) => this.post<ContentItem>(`/content/${id}/unpublish`);
   /** Carica una foto personalizzata nella grafica del post (finisce anche nella libreria del cliente). */
   uploadContentPhoto(id: number, file: File): Observable<ContentItem> {
     const form = new FormData();

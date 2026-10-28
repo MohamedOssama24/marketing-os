@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class BrandController
 {
-    public const COLUMNS = 'id, name, summary, website_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, created_at, updated_at';
+    public const COLUMNS = 'id, name, summary, website_url, instagram_url, facebook_url, linkedin_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, created_at, updated_at';
 
     /** Campi testuali facoltativi del brand kit con la lunghezza massima. */
     private const TEXT_FIELDS = [
@@ -94,12 +94,13 @@ final class BrandController
         foreach (self::TEXT_FIELDS as $key => $max) {
             if ($creating || array_key_exists($key, $data)) $fields[$key] = Http::optionalString($data, $key, $max);
         }
-        if ($creating || array_key_exists('website_url', $data)) {
-            $url = Http::optionalString($data, 'website_url', 2048);
+        foreach (['website_url', 'instagram_url', 'facebook_url', 'linkedin_url'] as $key) {
+            if (!$creating && !array_key_exists($key, $data)) continue;
+            $url = Http::optionalString($data, $key, 2048);
             if ($url !== null && (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $url))) {
-                Http::validationError("Campo 'website_url' deve essere un indirizzo http(s) valido.");
+                Http::validationError("Campo '{$key}' deve essere un indirizzo http(s) valido.");
             }
-            $fields['website_url'] = $url;
+            $fields[$key] = $url;
         }
         foreach (['primary_color', 'secondary_color'] as $key) {
             if (!$creating && !array_key_exists($key, $data)) continue;

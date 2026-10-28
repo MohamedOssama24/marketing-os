@@ -96,6 +96,9 @@ export interface Brand {
   name: string;
   summary: string | null;
   website_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  linkedin_url: string | null;
   industry: string | null;
   audience: string | null;
   tone_of_voice: string | null;
@@ -162,6 +165,8 @@ export interface ContentItem {
   review_note: string | null;
   reviewed_at: string | null;
   scheduled_at: string | null;
+  published_at: string | null;
+  published_url: string | null;
   created_at: string;
   updated_at: string;
   // Presenti solo nell'elenco delle approvazioni
@@ -189,6 +194,9 @@ export interface Dashboard {
   scheduled_this_month: number;
   pending_approval: number;
   ai_runs_this_month: number;
+  published_this_month: number;
+  /** Approvati con data di oggi o passata, non ancora pubblicati */
+  to_publish: CalendarItem[];
   week_start: string;
   week: CalendarItem[];
 }

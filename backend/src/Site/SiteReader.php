@@ -26,7 +26,8 @@ final class SiteReader
     /**
      * @return array{url: string, host: string, language: string, title: string, description: string, site_name: string, tagline: string,
      *   keywords: string, headings: list<string>, menu: list<string>, pages: list<array{url: string, text: string}>,
-     *   colors: list<string>, logo_candidates: list<string>, image_candidates: list<string>}
+     *   colors: list<string>, logo_candidates: list<string>, image_candidates: list<string>,
+     *   socials: array{instagram_url?: string, facebook_url?: string, linkedin_url?: string}}
      */
     public static function read(string $inputUrl): array
     {
@@ -76,6 +77,7 @@ final class SiteReader
         }
         $links = [];
         foreach ($xpath->query('//a[@href]') as $link) $links[] = [(string)$link->getAttribute('href'), self::clean($link->textContent)];
+        $socials = self::socialProfiles(array_column($links, 0));
 
         $pages = [self::page($dom, $baseUrl, 6000)];
         $images = $pages[0]['images'];
@@ -114,6 +116,7 @@ final class SiteReader
             'colors' => $colors,
             'logo_candidates' => array_slice($logoCandidates, 0, 5),
             'image_candidates' => array_slice(array_values(array_unique(array_diff($images, $logoCandidates))), 0, 12),
+            'socials' => $socials,
         ];
     }
 
@@ -178,6 +181,30 @@ final class SiteReader
         if (mb_strlen($text) < 300) $text = $beforeClasses;
 
         return ['url' => $url, 'text' => mb_substr($text, 0, $maxChars), 'headings' => $headings, 'images' => $images];
+    }
+
+    /**
+     * Profili social collegati dal sito (il primo per ciascuna rete), esclusi i link di condivisione.
+     * @return array{instagram_url?: string, facebook_url?: string, linkedin_url?: string}
+     */
+    private static function socialProfiles(array $hrefs): array
+    {
+        $networks = [
+            'instagram_url' => '#^https?://(www\.)?instagram\.com/(?!p/|reel/|explore/|share)([A-Za-z0-9._]+)/?#i',
+            'facebook_url' => '#^https?://(www\.|m\.|[a-z]{2}-[a-z]{2}\.)?facebook\.com/(?!sharer|share|dialog|plugins|events/)([A-Za-z0-9.\-]+)/?#i',
+            'linkedin_url' => '#^https?://([a-z]{2,3}\.)?linkedin\.com/(company|in|school)/([A-Za-z0-9\-_%]+)/?#i',
+        ];
+        $found = [];
+        foreach ($hrefs as $href) {
+            $href = trim((string)$href);
+            if (str_starts_with($href, '//')) $href = 'https:' . $href;
+            foreach ($networks as $key => $pattern) {
+                if (!isset($found[$key]) && preg_match($pattern, $href, $match)) {
+                    $found[$key] = rtrim(strtok($match[0], '?#'), '/');
+                }
+            }
+        }
+        return $found;
     }
 
     /** Toglie il testo iniziale comune a tutte le pagine interne: è il menu del tema, non contenuto. */

@@ -4,7 +4,7 @@ declare(strict_types=1);
 final class ContentController
 {
     public const CHANNELS = MarketingAi::CHANNELS;
-    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, created_at, updated_at';
+    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, published_at, published_url, created_at, updated_at';
 
     public static function index(int $projectId): never
     {
@@ -23,6 +23,41 @@ final class ContentController
         $stmt = Database::connection()->prepare("SELECT {$columns}, p.name AS project_name, p.brand_profile_id FROM content_items c JOIN projects p ON p.id=c.project_id AND p.organization_id=c.organization_id WHERE c.organization_id=? AND c.status='in_review' ORDER BY c.scheduled_at IS NULL, c.scheduled_at, c.updated_at LIMIT 200");
         $stmt->execute([$user['organization_id']]);
         Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
+    }
+
+    /**
+     * Segna come pubblicato un contenuto approvato, con il link facoltativo al post online.
+     * La pubblicazione vera avviene fuori dall'app (kit di pubblicazione); qui si tiene traccia di cosa è uscito.
+     */
+    public static function markPublished(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if (!in_array($item['status'], ['approved', 'scheduled', 'published'], true)) {
+            Http::json(['error' => 'invalid_state', 'message' => 'Si può pubblicare solo un contenuto approvato.'], 409);
+        }
+        $raw = file_get_contents('php://input') ?: '';
+        $data = trim($raw) === '' ? [] : Http::body();
+        $url = Http::optionalString($data, 'url', 2048);
+        if ($url !== null && (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $url))) {
+            Http::validationError('Il link del post pubblicato deve essere un indirizzo http(s) valido.');
+        }
+        $stmt = Database::connection()->prepare("UPDATE content_items SET status='published', published_at=COALESCE(published_at, ?), published_url=? WHERE id=? AND organization_id=?");
+        $stmt->execute([date('Y-m-d H:i:s'), $url, $id, $user['organization_id']]);
+        Audit::log($user, 'content.published', 'content_item', $id);
+        Http::json(['data' => self::find($id, $user)]);
+    }
+
+    /** Annulla "pubblicato" (ad esempio se segnato per errore): il contenuto torna approvato. */
+    public static function unpublish(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if ($item['status'] !== 'published') Http::json(['error' => 'invalid_state', 'message' => 'Il contenuto non risulta pubblicato.'], 409);
+        $stmt = Database::connection()->prepare("UPDATE content_items SET status='approved', published_at=NULL, published_url=NULL WHERE id=? AND organization_id=?");
+        $stmt->execute([$id, $user['organization_id']]);
+        Audit::log($user, 'content.unpublished', 'content_item', $id);
+        Http::json(['data' => self::find($id, $user)]);
     }
 
     public static function show(int $id): never

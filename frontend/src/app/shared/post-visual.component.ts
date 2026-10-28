@@ -5,6 +5,41 @@ import { AssetPreviewComponent } from './asset-preview.component';
 import { DEFAULT_PRIMARY, mix, readableOnLight, textOn } from './color';
 
 const loadedFonts = new Set<string>();
+const embeddedFontCss = new Map<string, Promise<string>>();
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * CSS @font-face di un font Google con i file incorporati, solo caratteri latini.
+ * Serve all'export PNG: senza, html-to-image incorporerebbe tutti i font della pagina (icone comprese),
+ * diversi MB che bloccano la generazione.
+ */
+function embeddedGoogleFont(family: string): Promise<string> {
+  let css = embeddedFontCss.get(family);
+  if (!css) {
+    css = (async () => {
+      const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@400;700;800&display=swap`;
+      const source = await (await fetch(url)).text();
+      const blocks = (source.match(/@font-face\s*{[^}]*}/g) ?? []).filter((b) => /U\+0000-00FF/i.test(b) || !/unicode-range/.test(b));
+      const embedded = await Promise.all(blocks.map(async (block) => {
+        const fontUrl = block.match(/url\(([^)]+)\)/)?.[1]?.replace(/["']/g, '');
+        if (!fontUrl) return '';
+        const dataUrl = await blobToDataUrl(await (await fetch(fontUrl)).blob());
+        return block.replace(/url\([^)]+\)/, `url(${dataUrl})`);
+      }));
+      return embedded.join('\n');
+    })().catch(() => '');
+    embeddedFontCss.set(family, css);
+  }
+  return css;
+}
 
 /** Carica da Google Fonts il font del brand (solo nomi alfanumerici). */
 function ensureFont(family: string | null | undefined): string | null {
@@ -143,10 +178,19 @@ export class PostVisualComponent {
   badgeBg(): string { return ['bold', 'offer'].includes(this.layout()) ? this.secondary() : this.primary(); }
   badgeFg(): string { return textOn(this.badgeBg()); }
 
-  /** Esporta la grafica come PNG largo 1080 pixel. */
-  async exportPng(fileName: string): Promise<void> {
+  /** Grafica come PNG (data URL) larga $width pixel. */
+  async renderPng(width = 1080): Promise<string> {
     const node = this.host.nativeElement.querySelector('.pv') as HTMLElement;
-    const dataUrl = await toPng(node, { pixelRatio: 1080 / node.offsetWidth, cacheBust: true });
+    const families = ['Inter', ...(ensureFont(this.brand?.font_family) ? [this.brand!.font_family!.trim()] : [])];
+    const fontEmbedCSS = (await Promise.all(families.map(embeddedGoogleFont))).join('\n');
+    // Niente cacheBust: aggiunge "?timestamp" agli URL e rompe le immagini blob: (logo e foto), che così non si esportano.
+    // Con fontEmbedCSS vuoto (font non raggiungibili) si saltano i font invece di incorporare quelli di tutta la pagina.
+    return toPng(node, { pixelRatio: width / node.offsetWidth, ...(fontEmbedCSS ? { fontEmbedCSS } : { skipFonts: true }) });
+  }
+
+  /** Esporta la grafica come file PNG largo 1080 pixel. */
+  async exportPng(fileName: string): Promise<void> {
+    const dataUrl = await this.renderPng();
     const link = document.createElement('a');
     link.href = dataUrl;
     link.download = `${fileName}.png`;

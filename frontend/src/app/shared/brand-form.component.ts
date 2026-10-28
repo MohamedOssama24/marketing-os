@@ -17,6 +17,9 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
       <label>Nome *<input formControlName="name" placeholder="Pasticceria Rossi" /></label>
       <label>Sito web<input formControlName="website_url" placeholder="https://..." /></label>
       <label class="full">In breve<input formControlName="summary" placeholder="Cosa fa l'attività e per chi" /></label>
+      <label>Instagram<input formControlName="instagram_url" placeholder="https://www.instagram.com/nomeprofilo" /></label>
+      <label>Facebook<input formControlName="facebook_url" placeholder="https://www.facebook.com/nomepagina" /></label>
+      <label>LinkedIn<input formControlName="linkedin_url" placeholder="https://www.linkedin.com/company/nome" /></label>
       <label>Settore<input formControlName="industry" placeholder="Alimentare, e-commerce" /></label>
       <label>Font<input formControlName="font_family" placeholder="Montserrat" /><small class="muted">Nome di un font di Google Fonts.</small></label>
 
@@ -68,6 +71,9 @@ export class BrandFormComponent implements OnInit {
     name: ['', [Validators.required, Validators.maxLength(160)]],
     summary: ['', Validators.maxLength(500)],
     website_url: [''],
+    instagram_url: [''],
+    facebook_url: [''],
+    linkedin_url: [''],
     industry: [''],
     font_family: [''],
     primary_color: ['', Validators.pattern(HEX)],

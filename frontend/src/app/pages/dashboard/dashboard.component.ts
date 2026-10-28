@@ -34,9 +34,26 @@ import { DEFAULT_PRIMARY, mix, readableOnLight } from '../../shared/color';
       <div class="metrics">
         <a class="metric" routerLink="/clients"><span class="metric-icon"><i class="ti ti-building-store" aria-hidden="true"></i></span><span class="metric-label">Clienti</span><strong>{{ d.clients }}</strong></a>
         <a class="metric" routerLink="/campaigns"><span class="metric-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span><span class="metric-label">Campagne attive</span><strong>{{ d.active_campaigns }}</strong></a>
-        <a class="metric" routerLink="/calendar"><span class="metric-icon"><i class="ti ti-calendar-event" aria-hidden="true"></i></span><span class="metric-label">Post del mese</span><strong>{{ d.scheduled_this_month }}</strong></a>
         <a class="metric" routerLink="/approvals"><span class="metric-icon"><i class="ti ti-checks" aria-hidden="true"></i></span><span class="metric-label">Da approvare</span><strong>{{ d.pending_approval }}</strong></a>
+        <a class="metric" routerLink="/calendar"><span class="metric-icon"><i class="ti ti-send" aria-hidden="true"></i></span><span class="metric-label">Pubblicati nel mese</span><strong>{{ d.published_this_month }}<small class="muted"> / {{ d.scheduled_this_month }}</small></strong></a>
       </div>
+
+      @if (d.to_publish.length) {
+        <div class="section-head">
+          <h2><i class="ti ti-bell-ringing" aria-hidden="true"></i> Da pubblicare</h2>
+          <span class="count-pill">{{ d.to_publish.length }} pronti</span>
+        </div>
+        <div class="card due-list">
+          @for (item of d.to_publish; track item.id) {
+            <a class="due-row" [routerLink]="['/campaigns', item.project_id]">
+              <span class="swatch" [style.background]="item.brand_color ?? '#5B4BDB'"></span>
+              <span class="grow"><strong>{{ item.title }}</strong><small class="muted">{{ item.brand_name ?? item.project_name }} · {{ channelLabels[item.channel] }}</small></span>
+              <span class="due-date" [class.late]="isLate(item)">{{ isLate(item) ? 'In ritardo · ' : 'Oggi · ' }}{{ item.scheduled_at | date: 'd MMM, HH:mm' }}</span>
+              <i class="ti ti-chevron-right muted" aria-hidden="true"></i>
+            </a>
+          }
+        </div>
+      }
 
       <div class="section-head">
         <h2>Questa settimana</h2>
@@ -89,6 +106,11 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.dashboard().subscribe({ next: (d) => this.data.set(d), error: (err) => this.error.set(apiErrorMessage(err)) });
+  }
+
+  /** Programmato prima di oggi e non ancora pubblicato. */
+  isLate(item: CalendarItem): boolean {
+    return item.scheduled_at.slice(0, 10) < this.key(new Date());
   }
 
   tint(color: string | null): string {

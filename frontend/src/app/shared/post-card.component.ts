@@ -9,6 +9,8 @@ import {
 } from '../core/models';
 import { PostVisualComponent } from './post-visual.component';
 import { AssetPreviewComponent } from './asset-preview.component';
+import { PublishDialogComponent } from './publish-dialog.component';
+import { publishableText } from './publishing';
 
 export const CHANNEL_ICONS: Record<string, string> = {
   instagram: 'ti-brand-instagram',
@@ -24,7 +26,7 @@ export const CHANNEL_ICONS: Record<string, string> = {
 @Component({
   selector: 'app-post-card',
   standalone: true,
-  imports: [DatePipe, FormsModule, PostVisualComponent, AssetPreviewComponent],
+  imports: [DatePipe, FormsModule, PostVisualComponent, AssetPreviewComponent, PublishDialogComponent],
   template: `
     <article class="post-card" [class.editing]="editing()">
       <div class="phone">
@@ -144,7 +146,16 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <button class="btn ghost small grow" (click)="rejecting.set(true); note = ''">Modifiche</button>
             <button class="btn success small grow" (click)="run(api.approveContent(item.id))" [disabled]="busy()"><i class="ti ti-check" aria-hidden="true"></i> Approva</button>
           }
+          @if (item.status === 'approved' || item.status === 'scheduled') {
+            <button class="btn primary small full-width" (click)="publishing.set(true)"><i class="ti ti-send" aria-hidden="true"></i> Pubblica</button>
+          }
+          @if (item.status === 'published') {
+            <button class="btn ghost small full-width" (click)="publishing.set(true)"><i class="ti ti-circle-check" aria-hidden="true"></i> Pubblicato · apri il kit</button>
+          }
         </div>
+      }
+      @if (publishing()) {
+        <app-publish-dialog [item]="item" [brand]="brand" [format]="format()" (closed)="publishing.set(false)" (changed)="changed.emit($event)" />
       }
       @if (error()) { <div class="alert small">{{ error() }}</div> }
     </article>
@@ -167,6 +178,7 @@ export class PostCardComponent {
   readonly quickInstructions = ['Più breve', 'Più emozionale', 'Più professionale', 'Più ironico', 'Aggiungi urgenza', 'Racconta una storia'];
 
   editing = signal(false);
+  publishing = signal(false);
   rejecting = signal(false);
   rewriting = signal(false);
   rewriteBusy = signal(false);
@@ -344,7 +356,7 @@ export class PostCardComponent {
   }
 
   copy(): void {
-    navigator.clipboard?.writeText(`${this.item.title}\n\n${this.item.body}`).then(() => {
+    navigator.clipboard?.writeText(publishableText(this.item.body)).then(() => {
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 1500);
     });

@@ -227,6 +227,30 @@ $variantsWithPhoto = array_filter($variantIds, function ($id) use ($a, $photoAss
 check('Le varianti usano la foto scelta', count($variantIds) === 2 && count($variantsWithPhoto) === 2, json_encode($variantResult));
 expectStatus('Varianti con una foto di B rifiutate', req('POST', "/projects/{$campaignId}/generate", $a['token'], ['channel' => 'instagram', 'brief' => 'X', 'asset_id' => $assetB['id']]), 422);
 
+echo "\nPubblicazione\n";
+// Il post approvato con data di ieri deve comparire tra quelli da pubblicare.
+req('POST', "/content/{$approvedPost['id']}/schedule", $a['token'], ['scheduled_at' => date('Y-m-d', strtotime('-1 day')) . ' 18:30']);
+$due = array_column(req('GET', '/dashboard', $a['token'])[1]['data']['to_publish'] ?? [], 'id');
+check('Il post approvato e scaduto è tra quelli da pubblicare', in_array($approvedPost['id'], $due));
+check('B non vede i post di A da pubblicare', !in_array($approvedPost['id'], array_column(req('GET', '/dashboard', $b['token'])[1]['data']['to_publish'] ?? [], 'id')));
+expectStatus('Una bozza non si pubblica', req('POST', "/content/{$photoPost['id']}/publish", $a['token'], []), 409);
+expectStatus('B non pubblica i post di A', req('POST', "/content/{$approvedPost['id']}/publish", $b['token'], []), 404);
+expectStatus('Il cliente non segna i post come pubblicati', req('POST', "/content/{$approvedPost['id']}/publish", $viewer, []), 403);
+expectStatus('Link del post non valido rifiutato', req('POST', "/content/{$approvedPost['id']}/publish", $a['token'], ['url' => 'javascript:alert(1)']), 422);
+$published = req('POST', "/content/{$approvedPost['id']}/publish", $a['token'], ['url' => 'https://www.instagram.com/p/esempio/']);
+check('A segna il post come pubblicato con il link', ($published[1]['data']['status'] ?? '') === 'published' && !empty($published[1]['data']['published_at']) && ($published[1]['data']['published_url'] ?? '') === 'https://www.instagram.com/p/esempio/', $published[2]);
+check('Il post pubblicato esce da quelli da pubblicare', !in_array($approvedPost['id'], array_column(req('GET', '/dashboard', $a['token'])[1]['data']['to_publish'] ?? [], 'id')));
+expectStatus('Un post pubblicato non si sposta', req('POST', "/content/{$approvedPost['id']}/schedule", $a['token'], ['scheduled_at' => '2030-03-20 10:00']), 409);
+expectStatus('Il cliente non può cambiare la foto di un post pubblicato', req('POST', "/content/{$approvedPost['id']}/photo", $viewer, null, ['file' => new CURLFile($pngPath, 'image/png', 'x.png')]), 409);
+$unpublished = req('POST', "/content/{$approvedPost['id']}/unpublish", $a['token']);
+check('Annullare la pubblicazione torna ad approvato', ($unpublished[1]['data']['status'] ?? '') === 'approved'
+    && array_key_exists('published_url', $unpublished[1]['data'] ?? []) && $unpublished[1]['data']['published_url'] === null, $unpublished[2]);
+expectStatus('B non annulla le pubblicazioni di A', req('POST', "/content/{$approvedPost['id']}/unpublish", $b['token']), 404);
+
+expectStatus('Profilo social non valido rifiutato', req('PATCH', "/brands/{$brandA['id']}", $a['token'], ['instagram_url' => 'instagram']), 422);
+$socials = req('PATCH', "/brands/{$brandA['id']}", $a['token'], ['instagram_url' => 'https://www.instagram.com/brand_a', 'facebook_url' => 'https://www.facebook.com/brandA']);
+check('Profili social salvati nel brand kit', ($socials[1]['data']['instagram_url'] ?? '') === 'https://www.instagram.com/brand_a', $socials[2]);
+
 echo "\nObiettivi suggeriti, riscrittura ed eliminazioni\n";
 $goalsJob = req('POST', "/brands/{$brandA['id']}/goal-suggestions", $a['token'], []);
 expectStatus('A chiede obiettivi suggeriti (202)', $goalsJob, 202);
