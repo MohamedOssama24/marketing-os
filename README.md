@@ -1,6 +1,34 @@
 # Marketing OS — starter MVP
 
-Starter locale per il progetto Marketing OS: API PHP 8.3, MySQL 8.4 e Nginx in Docker. Include registrazione, login, logout, utente corrente e CRUD iniziale dei progetti, con isolamento per organizzazione.
+Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx e un worker in Docker, frontend Angular 17. Include team con ruoli, brand kit, libreria file, progetti, generazione di contenuti con Claude e flusso di revisione e approvazione, con isolamento per organizzazione.
+
+## Generazione con l'AI
+
+Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza costi. Per contenuti reali:
+
+1. Crea una chiave su https://console.anthropic.com e impostala in `.env`:
+
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+2. Riavvia il worker:
+
+   ```bash
+   docker compose up -d worker
+   ```
+
+`ANTHROPIC_MODEL` (default `claude-opus-5-5`) e `ANTHROPIC_EFFORT` (default `medium`) regolano qualità e costo.
+
+## Test
+
+```bash
+docker compose exec app php tests/isolation.php
+```
+
+Verifica isolamento tra organizzazioni, ruoli, flusso di revisione, generazione in background e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+
+Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
 
 ## Requisiti
 
@@ -36,7 +64,7 @@ npm install
 npx ng serve
 ```
 
-Apri http://localhost:4200: login, registrazione e gestione dei progetti. L'indirizzo delle API è in `frontend/src/app/core/models.ts` (`API_URL`); l'origine `http://localhost:4200` deve coincidere con `CORS_ORIGIN` nel file `.env`.
+Apri http://localhost:4200: progetti, brand kit, libreria file, team e generazione dei contenuti. L'indirizzo delle API è in `frontend/src/app/core/models.ts` (`API_URL`); l'origine `http://localhost:4200` deve coincidere con `CORS_ORIGIN` nel file `.env`.
 
 ## Esempi con curl
 

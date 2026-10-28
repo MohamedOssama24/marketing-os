@@ -9,6 +9,22 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/var/www/html
+      - uploads:/var/www/storage
+    networks: [marketing]
+
+  # Applica le migrazioni del database e poi esegue i lavori in coda (generazione AI).
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    command: ["sh", "-c", "php bin/migrate.php && exec php bin/worker.php"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/var/www/html
     networks: [marketing]
 
   nginx:
@@ -40,6 +56,7 @@ services:
 
 volumes:
   mysql_data:
+  uploads:
 
 networks:
   marketing:

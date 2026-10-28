@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 final class Auth
 {
+    public const MANAGERS = ['owner', 'admin'];
+    public const EDITORS = ['owner', 'admin', 'editor'];
+
     public static function user(): array
     {
         $token = Http::bearerToken();
@@ -12,6 +15,18 @@ final class Auth
         $stmt->execute([hash('sha256', $token)]);
         $user = $stmt->fetch();
         if (!$user) Http::json(['error' => 'unauthorized', 'message' => 'Token non valido o scaduto.'], 401);
+        $user['id'] = (int)$user['id'];
+        $user['organization_id'] = (int)$user['organization_id'];
+        return $user;
+    }
+
+    /** Utente autenticato con uno dei ruoli indicati, altrimenti 403. */
+    public static function userWithRole(array $roles): array
+    {
+        $user = self::user();
+        if (!in_array($user['role'], $roles, true)) {
+            Http::json(['error' => 'forbidden', 'message' => 'Il tuo ruolo non consente questa operazione.'], 403);
+        }
         return $user;
     }
 

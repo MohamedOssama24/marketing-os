@@ -1,0 +1,18 @@
+<?php
+declare(strict_types=1);
+
+$vendorAutoload = getenv('COMPOSER_AUTOLOAD') ?: '/opt/deps/vendor/autoload.php';
+if (is_file($vendorAutoload)) require_once $vendorAutoload;
+
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/Http.php';
+require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/Tenant.php';
+require_once __DIR__ . '/RateLimiter.php';
+require_once __DIR__ . '/Audit.php';
+require_once __DIR__ . '/Router.php';
+require_once __DIR__ . '/Jobs.php';
+require_once __DIR__ . '/Ai/ContentGenerator.php';
+require_once __DIR__ . '/Ai/FakeContentGenerator.php';
+require_once __DIR__ . '/Ai/ClaudeContentGenerator.php';
+foreach (glob(__DIR__ . '/Controllers/*.php') ?: [] as $controller) require_once $controller;

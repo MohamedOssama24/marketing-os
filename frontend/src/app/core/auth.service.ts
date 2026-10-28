@@ -14,6 +14,10 @@ export class AuthService {
   private readonly tokenSignal = signal<string | null>(this.readToken());
   readonly user = signal<User | null>(null);
   readonly isLoggedIn = computed(() => this.tokenSignal() !== null);
+  /** Può creare e modificare brand, file, progetti e contenuti (owner, admin, editor). */
+  readonly canEdit = computed(() => ['owner', 'admin', 'editor'].includes(this.user()?.role ?? ''));
+  /** Può approvare contenuti e gestire il team (owner, admin). */
+  readonly canManage = computed(() => ['owner', 'admin'].includes(this.user()?.role ?? ''));
 
   get token(): string | null {
     return this.tokenSignal();

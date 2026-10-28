@@ -1,0 +1,14 @@
+{
+    "name": "marketing-os/backend",
+    "description": "API di Marketing OS",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "anthropic-ai/sdk": "*",
+        "guzzlehttp/guzzle": "^7.9"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

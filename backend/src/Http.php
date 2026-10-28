@@ -20,11 +20,43 @@ final class Http
         return $data;
     }
 
+    public static function validationError(string $message): never
+    {
+        self::json(['error' => 'validation_error', 'message' => $message], 422);
+    }
+
     public static function requiredString(array $data, string $key, int $max): string
     {
-        $value = trim((string)($data[$key] ?? ''));
+        $value = is_scalar($data[$key] ?? null) ? trim((string)$data[$key]) : '';
         if ($value === '' || mb_strlen($value) > $max) {
-            self::json(['error' => 'validation_error', 'message' => "Campo '{$key}' obbligatorio (massimo {$max} caratteri)."], 422);
+            self::validationError("Campo '{$key}' obbligatorio (massimo {$max} caratteri).");
+        }
+        return $value;
+    }
+
+    /** Stringa facoltativa: vuota o assente diventa null. */
+    public static function optionalString(array $data, string $key, int $max): ?string
+    {
+        if (!isset($data[$key])) return null;
+        if (!is_scalar($data[$key])) self::validationError("Campo '{$key}' non valido.");
+        $value = trim((string)$data[$key]);
+        if ($value === '') return null;
+        if (mb_strlen($value) > $max) self::validationError("Campo '{$key}' troppo lungo (massimo {$max} caratteri).");
+        return $value;
+    }
+
+    public static function optionalInt(array $data, string $key): ?int
+    {
+        if (!isset($data[$key]) || $data[$key] === '') return null;
+        if (filter_var($data[$key], FILTER_VALIDATE_INT) === false) self::validationError("Campo '{$key}' deve essere un intero.");
+        return (int)$data[$key];
+    }
+
+    public static function oneOf(array $data, string $key, array $allowed, ?string $default = null): string
+    {
+        $value = $data[$key] ?? $default;
+        if (!is_string($value) || !in_array($value, $allowed, true)) {
+            self::validationError("Campo '{$key}' non valido. Valori ammessi: " . implode(', ', $allowed) . '.');
         }
         return $value;
     }
@@ -34,5 +66,10 @@ final class Http
         $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         if (preg_match('/^Bearer\s+([A-Za-z0-9._~-]+)$/i', $header, $matches)) return $matches[1];
         return null;
+    }
+
+    public static function clientIp(): string
+    {
+        return (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
     }
 }
