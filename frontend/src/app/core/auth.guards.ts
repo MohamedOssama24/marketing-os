@@ -22,3 +22,11 @@ export const guestGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   return auth.isLoggedIn() ? inject(Router).createUrlTree(['/dashboard']) : true;
 };
+
+/** Fatturazione: solo titolari e amministratori dell'organizzazione. */
+export const managerGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (!auth.isLoggedIn()) return router.createUrlTree(['/login']);
+  return auth.loadMe().pipe(map(() => (auth.canManage() ? true : router.createUrlTree(['/dashboard']))));
+};

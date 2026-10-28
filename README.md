@@ -5,6 +5,8 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Dal sito alla campagna**: inserisci il sito di un cliente e l'AI ne ricava brand kit, colori e logo; poi genera strategia e calendario di post con grafiche nei colori del brand.
 - **Anteprime realistiche** dei post (Instagram, Facebook, LinkedIn, blog, email) con grafica esportabile in PNG.
 - **Calendario** mensile con trascinamento, **approvazioni** con note di revisione, **dashboard** della settimana.
+- **Sponsorizzate**: spesa, clic e risultati per cliente, inseriti a mano o importati dal CSV di Gestione inserzioni di Meta, con grafici per mese e per cliente.
+- **Fatturazione**: ogni mese una fattura per cliente con canone, sponsorizzate da rifatturare e commissione; stati da fatturare → fatturata → pagata ed export CSV per il commercialista.
 - Team con ruoli, libreria file, isolamento tra organizzazioni.
 
 ## Generazione con l'AI
@@ -31,7 +33,7 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 docker compose exec app php tests/isolation.php
 ```
 
-Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate e fatturazione, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 
 Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
 

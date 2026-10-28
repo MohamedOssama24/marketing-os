@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, AdImportResult, AdPlatform, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -141,7 +141,44 @@ export class ApiService {
   adminReactivate = (id: number) => this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/reactivate`);
   adminNotes = (id: number, notes: string) => this.patch<AdminOrganizationDetail>(`/admin/organizations/${id}`, { admin_notes: notes });
 
+  // Sponsorizzate
+  /** Righe del registro che toccano l'anno indicato. */
+  adSpend(year: number, brandId?: number | null): Observable<AdSpend[]> {
+    return this.get<AdSpend[]>(`/ad-spend?from=${year}-01-01&to=${year}-12-31${brandId ? `&brand_id=${brandId}` : ''}`);
+  }
+  adSummary(year: number, brandId?: number | null): Observable<AdSummary> {
+    return this.get<AdSummary>(`/ad-spend/summary?year=${year}${brandId ? `&brand_id=${brandId}` : ''}`);
+  }
+  createAdSpend = (row: AdSpendInput) => this.post<AdSpend>('/ad-spend', row);
+  updateAdSpend = (id: number, row: Partial<AdSpendInput>) => this.patch<AdSpend>(`/ad-spend/${id}`, row);
+  deleteAdSpend = (id: number) => this.delete(`/ad-spend/${id}`);
+  /** CSV di Gestione inserzioni; con preview restituisce solo cosa verrebbe importato. */
+  importAdSpend(brandId: number, file: File, platform: AdPlatform, preview: boolean, projectId?: number | null): Observable<AdImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('platform', platform);
+    if (preview) form.append('preview', '1');
+    if (projectId) form.append('project_id', String(projectId));
+    return this.post<AdImportResult>(`/brands/${brandId}/ad-spend/import`, form);
+  }
+
+  // Fatturazione
+  billingClients = () => this.get<BillingClient[]>('/billing/clients');
+  updateBillingClient = (id: number, data: Partial<BillingClient>) => this.patch<BillingClient>(`/billing/clients/${id}`, data);
+  invoices = (period: string) => this.get<InvoiceMonth>(`/invoices?period=${period}`);
+  prepareInvoices = (period: string) => this.post<{ created: number; updated: number; skipped: number }>('/invoices/prepare', { period });
+  invoice = (id: number) => this.get<InvoiceDetail>(`/invoices/${id}`);
+  updateInvoice = (id: number, data: { vat_rate?: number; notes?: string | null; due_on?: string | null }) => this.patch<InvoiceDetail>(`/invoices/${id}`, data);
+  addInvoiceLine = (id: number, description: string, amount: number) => this.post<InvoiceDetail>(`/invoices/${id}/lines`, { description, amount });
+  deleteInvoiceLine = (id: number, lineId: number) => this.http.delete<Data<InvoiceDetail>>(`${API_URL}/invoices/${id}/lines/${lineId}`).pipe(map((r) => r.data));
+  issueInvoice = (id: number, data: { number: string; issued_on?: string; due_on?: string | null }) => this.post<InvoiceDetail>(`/invoices/${id}/issue`, data);
+  markInvoicePaid = (id: number, paidOn?: string) => this.post<InvoiceDetail>(`/invoices/${id}/paid`, paidOn ? { paid_on: paidOn } : {});
+  reopenInvoice = (id: number) => this.post<InvoiceDetail>(`/invoices/${id}/reopen`);
+  deleteInvoice = (id: number) => this.delete(`/invoices/${id}`);
+  /** Il CSV richiede il token: si scarica come blob. */
+  invoicesCsv = (period: string) => this.http.get(`${API_URL}/invoices/export?period=${period}`, { responseType: 'blob' });
+
   // Team
-  team = () => this.get<TeamMember[]>('/users');
+  team =() => this.get<TeamMember[]>('/users');
   addMember = (m: { name: string; email: string; password: string; role: Exclude<Role, 'owner'> }) => this.post<TeamMember>('/users', m);
 }

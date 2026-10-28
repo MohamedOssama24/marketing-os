@@ -285,3 +285,120 @@ export function apiErrorMessage(err: unknown, fallback = 'Si è verificato un er
   if (e?.status === 0) return 'Impossibile contattare il server. Verifica che Docker sia avviato.';
   return e?.error?.message ?? fallback;
 }
+
+// Sponsorizzate e fatturazione
+
+export type AdPlatform = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'other';
+export const PLATFORM_LABELS: Record<AdPlatform, string> = { meta: 'Meta (Facebook e Instagram)', google: 'Google Ads', tiktok: 'TikTok', linkedin: 'LinkedIn', other: 'Altra piattaforma' };
+
+export interface AdSpend {
+  id: number;
+  brand_profile_id: number;
+  brand_name: string;
+  brand_color: string | null;
+  project_id: number | null;
+  project_name: string | null;
+  platform: AdPlatform;
+  campaign_name: string;
+  period_start: string;
+  period_end: string;
+  budget: number | null;
+  spent: number;
+  impressions: number | null;
+  reach: number | null;
+  clicks: number | null;
+  results: number | null;
+  source: 'manual' | 'csv';
+  notes: string | null;
+  invoice_id: number | null;
+  invoice_status: InvoiceStatus | null;
+  invoice_period: string | null;
+}
+
+export type AdSpendInput = Pick<AdSpend, 'brand_profile_id' | 'platform' | 'campaign_name' | 'period_start' | 'period_end' | 'spent' | 'budget' | 'impressions' | 'reach' | 'clicks' | 'results' | 'notes'> & { project_id?: number | null };
+
+export interface AdMetrics {
+  spent: number;
+  budget: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  results: number;
+  cpc: number | null;
+  ctr: number | null;
+  cost_per_result: number | null;
+}
+
+export interface AdSummary {
+  year: number;
+  totals: AdMetrics;
+  months: { month: number; spent: number; clicks: number; impressions: number }[];
+  clients: (AdMetrics & { id: number; name: string; primary_color: string | null; entries: number })[];
+}
+
+export interface AdImportResult {
+  preview: boolean;
+  counts: { new: number; update: number; locked: number };
+  skipped: number;
+  errors: { line: number; message: string }[];
+  total_spent: number;
+  rows: { campaign_name: string; period_start: string; period_end: string; spent: number; clicks: number | null; impressions: number | null; action: 'new' | 'update' | 'locked' }[];
+}
+
+export type InvoiceStatus = 'to_invoice' | 'invoiced' | 'paid';
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = { to_invoice: 'Da fatturare', invoiced: 'Fatturata', paid: 'Pagata' };
+
+export interface BillingClient {
+  id: number;
+  name: string;
+  primary_color: string | null;
+  monthly_fee: number | null;
+  ad_fee_percent: number;
+  billing_name: string | null;
+  vat_number: string | null;
+  tax_code: string | null;
+  sdi_code: string | null;
+  pec: string | null;
+  billing_address: string | null;
+  billing_email: string | null;
+}
+
+export interface Invoice {
+  id: number;
+  brand_profile_id: number;
+  brand_name: string;
+  brand_color: string | null;
+  period: string;
+  status: InvoiceStatus;
+  number: string | null;
+  issued_on: string | null;
+  due_on: string | null;
+  paid_on: string | null;
+  vat_rate: number;
+  subtotal: number;
+  vat_amount: number;
+  total: number;
+  lines_count?: number;
+  ad_spend_total?: number;
+  notes?: string | null;
+}
+
+export interface InvoiceLine {
+  id: number;
+  kind: 'fee' | 'ad_spend' | 'ad_fee' | 'other';
+  description: string;
+  amount: number;
+  ad_spend_id: number | null;
+}
+
+export interface InvoiceDetail extends Invoice {
+  lines: InvoiceLine[];
+  client: BillingClient;
+}
+
+export interface InvoiceMonth {
+  period: string;
+  invoices: Invoice[];
+  totals: Record<InvoiceStatus, { count: number; total: number }>;
+  unbilled_ad_spend: { count: number; spent: number };
+}

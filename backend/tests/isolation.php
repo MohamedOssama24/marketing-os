@@ -369,6 +369,81 @@ $notes = req('PATCH', "/admin/organizations/{$orgA}", $admin['token'], ['admin_n
 check('Note interne salvate', ($notes[1]['data']['organization']['admin_notes'] ?? '') === 'Cliente pilota, chiamare a novembre', $notes[2]);
 check('Le note non sono visibili all\'organizzazione', !str_contains(req('GET', '/me', $a['token'])[2], 'Cliente pilota'));
 
+echo "\nSponsorizzate: registro e import del CSV di Meta\n";
+$metaCsv = sys_get_temp_dir() . '/m1-meta.csv';
+file_put_contents($metaCsv, "\xEF\xBB\xBF" . implode("\r\n", [
+    'Nome della campagna;Inizio dei report;Fine dei report;Importo speso (EUR);Impression;Copertura;Clic sul link;Risultati',
+    'Promo autunno;2026-09-01;2026-09-30;1.234,56;45.000;30.000;812;40',
+    '"Lead; novembre";2026-09-10;2026-09-30;100,00;5000;;50;',
+    ';2026-09-01;2026-09-30;1.334,56;50.000;;862;40',
+]));
+$csvFile = fn() => ['file' => new CURLFile($metaCsv, 'text/csv', 'meta.csv')];
+$preview = req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, $csvFile() + ['preview' => '1']);
+check('Anteprima del CSV di Meta in italiano', ($preview[1]['data']['counts']['new'] ?? 0) === 2 && ($preview[1]['data']['total_spent'] ?? 0) == 1334.56 && ($preview[1]['data']['skipped'] ?? 0) === 1, $preview[2]);
+check("L'anteprima non salva nulla", (req('GET', "/ad-spend?brand_id={$brandA['id']}", $a['token'])[1]['data'] ?? null) === []);
+$imported = req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, $csvFile());
+check('Import del CSV', ($imported[1]['data']['counts']['new'] ?? 0) === 2, $imported[2]);
+$rows = req('GET', "/ad-spend?brand_id={$brandA['id']}", $viewer)[1]['data'] ?? [];
+$promo = array_values(array_filter($rows, fn($r) => $r['campaign_name'] === 'Promo autunno'))[0] ?? [];
+check('Importi e clic letti correttamente', ($promo['spent'] ?? 0) == 1234.56 && ($promo['clicks'] ?? 0) === 812 && ($promo['impressions'] ?? 0) === 45000, json_encode($promo));
+$again = req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, $csvFile());
+check('Reimportare aggiorna senza duplicare', ($again[1]['data']['counts']['update'] ?? 0) === 2 && ($again[1]['data']['counts']['new'] ?? 1) === 0, $again[2]);
+$usdCsv = sys_get_temp_dir() . '/m1-usd.csv';
+file_put_contents($usdCsv, "Campaign name,Reporting starts,Reporting ends,Amount spent (USD)\nX,2026-09-01,2026-09-30,10.50\n");
+expectStatus('CSV in dollari rifiutato', req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, ['file' => new CURLFile($usdCsv, 'text/csv', 'usd.csv')]), 422);
+file_put_contents($usdCsv, "Campagna;Clic\nX;3\n");
+expectStatus('CSV senza la colonna della spesa rifiutato', req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, ['file' => new CURLFile($usdCsv, 'text/csv', 'x.csv')]), 422);
+expectStatus('Viewer non importa', req('POST', "/brands/{$brandA['id']}/ad-spend/import", $viewer, null, $csvFile()), 403);
+expectStatus('B non importa sui clienti di A', req('POST', "/brands/{$brandA['id']}/ad-spend/import", $b['token'], null, $csvFile()), 404);
+
+$manual = req('POST', '/ad-spend', $editor, ['brand_profile_id' => $brandA['id'], 'platform' => 'google', 'campaign_name' => 'Ricerca Google', 'period_start' => '2026-09-05', 'period_end' => '2026-09-20', 'spent' => 200.5, 'clicks' => 100, 'impressions' => 4000]);
+expectStatus('Editor inserisce una spesa a mano', $manual, 201);
+$manualId = $manual[1]['data']['id'] ?? 0;
+expectStatus('Date invertite rifiutate', req('POST', '/ad-spend', $editor, ['brand_profile_id' => $brandA['id'], 'campaign_name' => 'X', 'period_start' => '2026-09-20', 'period_end' => '2026-09-01', 'spent' => 1]), 422);
+expectStatus('B non registra spese sui clienti di A', req('POST', '/ad-spend', $b['token'], ['brand_profile_id' => $brandA['id'], 'campaign_name' => 'X', 'period_start' => '2026-09-01', 'period_end' => '2026-09-02', 'spent' => 1]), 422);
+expectStatus('B non modifica le spese di A', req('PATCH', "/ad-spend/{$manualId}", $b['token'], ['spent' => 1]), 404);
+expectStatus('B non elimina le spese di A', req('DELETE', "/ad-spend/{$manualId}", $b['token']), 404);
+check('Lista spese di B senza righe di A', !in_array($manualId, array_column(req('GET', '/ad-spend', $b['token'])[1]['data'] ?? [], 'id')));
+$summary = req('GET', "/ad-spend/summary?year=2026&brand_id={$brandA['id']}", $a['token'])[1]['data'] ?? [];
+check('Riepilogo annuale: speso, clic e CPC', ($summary['totals']['spent'] ?? 0) == 1535.06 && ($summary['totals']['clicks'] ?? 0) === 962 && ($summary['totals']['cpc'] ?? 0) == 1.6 && ($summary['months'][8]['spent'] ?? 0) == 1535.06, json_encode($summary['totals'] ?? null));
+
+echo "\nFatturazione\n";
+expectStatus('Editor non vede le fatture', req('GET', '/invoices?period=2026-09', $editor), 403);
+expectStatus('Viewer non vede i canoni', req('GET', '/billing/clients', $viewer), 403);
+expectStatus('Codice SDI non valido', req('PATCH', "/billing/clients/{$brandA['id']}", $a['token'], ['sdi_code' => 'ABC']), 422);
+expectStatus('B non cambia il canone dei clienti di A', req('PATCH', "/billing/clients/{$brandA['id']}", $b['token'], ['monthly_fee' => 1]), 404);
+$billing = req('PATCH', "/billing/clients/{$brandA['id']}", $a['token'], ['monthly_fee' => 500, 'ad_fee_percent' => 10, 'billing_name' => 'Brand A S.r.l.', 'vat_number' => 'IT01234567890', 'sdi_code' => 'abc1234']);
+check('Canone, commissione e dati di fatturazione', ($billing[1]['data']['monthly_fee'] ?? 0) == 500 && ($billing[1]['data']['sdi_code'] ?? '') === 'ABC1234', $billing[2]);
+$prepared = req('POST', '/invoices/prepare', $a['token'], ['period' => '2026-09']);
+$invoiceA = array_values(array_filter($prepared[1]['data']['invoices'] ?? [], fn($i) => $i['brand_profile_id'] === $brandA['id']))[0] ?? [];
+// 500 canone + 1535,06 sponsorizzate + 153,51 commissione = 2188,57 + IVA 22% 481,49
+check('Bozza del mese con canone, spese e commissione', ($invoiceA['subtotal'] ?? 0) == 2188.57 && ($invoiceA['vat_amount'] ?? 0) == 481.49 && ($invoiceA['total'] ?? 0) == 2670.06 && ($invoiceA['lines_count'] ?? 0) === 5, $prepared[2]);
+$invoiceId = $invoiceA['id'] ?? 0;
+expectStatus('B non vede le fatture di A', req('GET', "/invoices/{$invoiceId}", $b['token']), 404);
+expectStatus('B non emette le fatture di A', req('POST', "/invoices/{$invoiceId}/issue", $b['token'], ['number' => '1']), 404);
+req('POST', "/invoices/{$invoiceId}/lines", $a['token'], ['description' => 'Servizio fotografico', 'amount' => 150]);
+req('PATCH', "/ad-spend/{$manualId}", $editor, ['spent' => 300]);
+$draft = req('GET', "/invoices/{$invoiceId}", $a['token'])[1]['data'] ?? [];
+// 500 + 1634,56 + 163,46 + 150
+check('La bozza segue le spese modificate e tiene le voci a mano', ($draft['subtotal'] ?? 0) == 2448.02 && in_array('Servizio fotografico', array_column($draft['lines'] ?? [], 'description'), true), json_encode($draft['lines'] ?? null));
+expectStatus('Emissione senza numero rifiutata', req('POST', "/invoices/{$invoiceId}/issue", $a['token'], []), 422);
+$issued = req('POST', "/invoices/{$invoiceId}/issue", $a['token'], ['number' => '42/2026', 'issued_on' => '2026-10-01']);
+check('Fattura emessa', ($issued[1]['data']['status'] ?? '') === 'invoiced' && ($issued[1]['data']['number'] ?? '') === '42/2026', $issued[2]);
+expectStatus('Una spesa fatturata non si modifica', req('PATCH', "/ad-spend/{$manualId}", $editor, ['spent' => 1]), 409);
+expectStatus('Una spesa fatturata non si elimina', req('DELETE', "/ad-spend/{$manualId}", $editor), 409);
+expectStatus('Una fattura emessa non si modifica', req('POST', "/invoices/{$invoiceId}/lines", $a['token'], ['description' => 'X', 'amount' => 1]), 409);
+check('Reimportare non tocca le righe fatturate', (req('POST', "/brands/{$brandA['id']}/ad-spend/import", $editor, null, $csvFile())[1]['data']['counts']['locked'] ?? 0) === 2);
+expectStatus('Segnata come pagata', req('POST', "/invoices/{$invoiceId}/paid", $a['token'], ['paid_on' => '2026-10-15']), 200);
+check('Preparare di nuovo salta le fatture emesse', (req('POST', '/invoices/prepare', $a['token'], ['period' => '2026-09'])[1]['data']['skipped'] ?? 0) >= 1);
+$csv = req('GET', '/invoices/export?period=2026-09', $a['token']);
+check('Export CSV per il commercialista', $csv[0] === 200 && str_contains($csv[2], 'Canone gestione marketing') && str_contains($csv[2], '2448,02') && str_contains($csv[2], 'IT01234567890'), substr($csv[2], 0, 200));
+check("L'export di B non contiene le fatture di A", !str_contains(req('GET', '/invoices/export?period=2026-09', $b['token'])[2], 'Brand A'));
+req('POST', "/invoices/{$invoiceId}/reopen", $a['token']);
+$reopened = req('POST', "/invoices/{$invoiceId}/reopen", $a['token']);
+check('Riaperta due volte torna da fatturare', ($reopened[1]['data']['status'] ?? '') === 'to_invoice', $reopened[2]);
+expectStatus('Eliminazione della bozza', req('DELETE', "/invoices/{$invoiceId}", $a['token']), 200);
+check('Le spese tornano da fatturare', array_filter(req('GET', "/ad-spend?brand_id={$brandA['id']}", $a['token'])[1]['data'] ?? [], fn($r) => $r['invoice_id'] !== null) === []);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

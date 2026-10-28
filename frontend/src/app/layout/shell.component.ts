@@ -15,6 +15,9 @@ import { ROLE_LABELS } from '../core/models';
           @for (item of nav; track item.path) {
             <a [routerLink]="item.path" routerLinkActive="active"><i class="ti" [class]="'ti ' + item.icon" aria-hidden="true"></i>{{ item.label }}</a>
           }
+          @if (auth.canManage()) {
+            <a routerLink="/billing" routerLinkActive="active"><i class="ti ti-file-invoice" aria-hidden="true"></i>Fatturazione</a>
+          }
           @if (auth.isPlatformAdmin()) {
             <a routerLink="/admin" routerLinkActive="active" class="nav-admin"><i class="ti ti-shield-lock" aria-hidden="true"></i>Admin</a>
           }
@@ -46,6 +49,7 @@ export class ShellComponent implements OnInit {
     { path: '/calendar', label: 'Calendario', icon: 'ti-calendar' },
     { path: '/approvals', label: 'Approvazioni', icon: 'ti-checks' },
     { path: '/assets', label: 'Libreria', icon: 'ti-photo' },
+    { path: '/ads', label: 'Sponsorizzate', icon: 'ti-coin-euro' },
     { path: '/team', label: 'Team', icon: 'ti-users' },
   ];
 

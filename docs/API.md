@@ -197,6 +197,30 @@ docker compose exec app php bin/make-admin.php email@esempio.it --revoca
 
 Le azioni dell'amministratore finiscono nel registro attività dell'organizzazione interessata.
 
+## Sponsorizzate
+
+Registro della spesa pubblicitaria per cliente. Lettura per tutti i ruoli, scrittura per owner, admin ed editor.
+
+- `GET /ad-spend?brand_id=&from=AAAA-MM-GG&to=AAAA-MM-GG` — righe con cliente, campagna collegata e stato della fattura (`invoice_status`).
+- `GET /ad-spend/summary?year=2026&brand_id=` — totali dell'anno (speso, budget, impression, copertura, clic, risultati, CPC, CTR, costo per risultato), spesa per mese e per cliente. Una riga conta nel mese in cui finisce il suo periodo.
+- `POST /ad-spend` — `{ "brand_profile_id", "campaign_name", "period_start", "period_end", "spent", "platform": "meta|google|tiktok|linkedin|other", "budget"?, "impressions"?, "reach"?, "clicks"?, "results"?, "project_id"?, "notes"? }`.
+- `PATCH /ad-spend/{id}`, `DELETE /ad-spend/{id}` — `409` se la riga è in una fattura già emessa o pagata.
+- `POST /brands/{id}/ad-spend/import` — multipart con `file` (CSV di Gestione inserzioni di Meta, in italiano o inglese, max 2 MB), `platform`, `project_id` facoltativo e `preview=1` per vedere cosa verrebbe importato senza salvare. Riconosce separatore (`;` `,` tab), codifica e formato dei numeri; ignora la riga dei totali. Reimportare lo stesso periodo aggiorna le righe invece di duplicarle; quelle già fatturate restano invariate (`counts.locked`). Solo importi in euro.
+
+## Fatturazione
+
+Solo owner e admin. Una fattura al mese per cliente, con stati `to_invoice` → `invoiced` → `paid`. La fattura elettronica si emette nel gestionale o dal commercialista: qui si preparano gli importi, si registra il numero e si segue il pagamento.
+
+- `GET /billing/clients`, `PATCH /billing/clients/{id}` — `monthly_fee`, `ad_fee_percent` (commissione sulle sponsorizzate), `billing_name`, `vat_number`, `tax_code`, `sdi_code`, `pec`, `billing_address`, `billing_email`. Le bozze aperte del cliente si ricalcolano subito.
+- `GET /invoices?period=AAAA-MM` — fatture del mese, totali per stato e sponsorizzate non ancora in fattura.
+- `POST /invoices/prepare` — `{ "period" }`. Crea o ricalcola la bozza di ogni cliente con un canone o con sponsorizzate non fatturate fino alla fine del mese: canone, una voce per ogni sponsorizzata, commissione. Le fatture emesse non cambiano.
+- `GET /invoices/{id}` — voci e dati di fatturazione del cliente.
+- `PATCH /invoices/{id}` — `vat_rate` (default 22), `notes`, `due_on`; solo bozze.
+- `POST /invoices/{id}/lines` — `{ "description", "amount" }` voce libera (negativa per uno sconto); `DELETE /invoices/{id}/lines/{lineId}`.
+- `POST /invoices/{id}/issue` — `{ "number", "issued_on"?, "due_on"? }`; `409` se il numero è già usato nello stesso anno.
+- `POST /invoices/{id}/paid` — `{ "paid_on"? }`. `POST /invoices/{id}/reopen` torna indietro di uno stato. `DELETE /invoices/{id}` elimina una bozza e rimette le sue spese da fatturare.
+- `GET /invoices/export?period=AAAA-MM` — CSV per il commercialista (una riga per voce, separatore `;`, virgola decimale, apribile in Excel).
+
 ## Limiti di accesso
 
 - Login: 5 tentativi falliti per email e IP, 30 per IP, in 15 minuti.

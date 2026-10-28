@@ -75,6 +75,28 @@ $router->add('GET', '/api/v1/calendar', [DashboardController::class, 'calendar']
 
 $router->add('GET', '/api/v1/jobs/{id}', [Jobs::class, 'show']);
 
+// Sponsorizzate e fatturazione ai clienti
+$router->add('GET', '/api/v1/ad-spend', [AdSpendController::class, 'index']);
+$router->add('POST', '/api/v1/ad-spend', [AdSpendController::class, 'store']);
+$router->add('GET', '/api/v1/ad-spend/summary', [AdSpendController::class, 'summary']);
+$router->add('PATCH', '/api/v1/ad-spend/{id}', [AdSpendController::class, 'update']);
+$router->add('DELETE', '/api/v1/ad-spend/{id}', [AdSpendController::class, 'destroy']);
+$router->add('POST', '/api/v1/brands/{brandId}/ad-spend/import', [AdSpendController::class, 'import']);
+
+$router->add('GET', '/api/v1/billing/clients', [BillingController::class, 'clients']);
+$router->add('PATCH', '/api/v1/billing/clients/{brandId}', [BillingController::class, 'updateClient']);
+$router->add('GET', '/api/v1/invoices', [BillingController::class, 'index']);
+$router->add('POST', '/api/v1/invoices/prepare', [BillingController::class, 'prepare']);
+$router->add('GET', '/api/v1/invoices/export', [BillingController::class, 'export']);
+$router->add('GET', '/api/v1/invoices/{id}', [BillingController::class, 'show']);
+$router->add('PATCH', '/api/v1/invoices/{id}', [BillingController::class, 'update']);
+$router->add('DELETE', '/api/v1/invoices/{id}', [BillingController::class, 'destroy']);
+$router->add('POST', '/api/v1/invoices/{id}/lines', [BillingController::class, 'addLine']);
+$router->add('DELETE', '/api/v1/invoices/{id}/lines/{lineId}', [BillingController::class, 'deleteLine']);
+$router->add('POST', '/api/v1/invoices/{id}/issue', [BillingController::class, 'issue']);
+$router->add('POST', '/api/v1/invoices/{id}/paid', [BillingController::class, 'markPaid']);
+$router->add('POST', '/api/v1/invoices/{id}/reopen', [BillingController::class, 'reopen']);
+
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);
 $router->add('GET', '/api/v1/admin/organizations', [AdminController::class, 'organizations']);

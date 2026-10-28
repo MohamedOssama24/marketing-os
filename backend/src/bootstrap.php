@@ -20,4 +20,5 @@ require_once __DIR__ . '/Site/SiteReader.php';
 require_once __DIR__ . '/Video/FontProvider.php';
 require_once __DIR__ . '/Video/VideoStoryboard.php';
 require_once __DIR__ . '/Video/VideoRenderer.php';
+require_once __DIR__ . '/Ads/AdsCsvParser.php';
 foreach (glob(__DIR__ . '/Controllers/*.php') ?: [] as $controller) require_once $controller;
