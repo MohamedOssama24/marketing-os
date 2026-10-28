@@ -179,6 +179,24 @@ Il brand kit ha `instagram_url`, `facebook_url` e `linkedin_url`; l'analisi del 
 
 `GET /approvals` — contenuti `in_review` di tutta l'organizzazione, con nome della campagna e cliente.
 
+## Pannello Admin della piattaforma
+
+Riservato agli amministratori della piattaforma (`is_platform_admin` in `/me`), che vedono tutte le organizzazioni. Lo si diventa solo da riga di comando:
+
+```bash
+docker compose exec app php bin/make-admin.php email@esempio.it
+docker compose exec app php bin/make-admin.php email@esempio.it --revoca
+```
+
+- `GET /admin/overview` — numeri della piattaforma (organizzazioni, utenti attivi, clienti, campagne, contenuti, lavori AI e video del mese, lavori falliti, spazio file).
+- `GET /admin/organizations?q=&status=active|suspended` — elenco con conteggi per organizzazione; `q` cerca nel nome o nell'email del titolare.
+- `GET /admin/organizations/{id}` — utenti con ultimo accesso, clienti, ultimi lavori, attività recente, note interne.
+- `PATCH /admin/organizations/{id}` — `{ "admin_notes" }`, note visibili solo agli amministratori.
+- `POST /admin/organizations/{id}/suspend` — `{ "reason" }` obbligatorio. Chiude subito tutte le sessioni dei suoi utenti; login e chiamate rispondono `403` con `error: account_suspended`. Non si può sospendere la propria organizzazione.
+- `POST /admin/organizations/{id}/reactivate`.
+
+Le azioni dell'amministratore finiscono nel registro attività dell'organizzazione interessata.
+
 ## Limiti di accesso
 
 - Login: 5 tentativi falliti per email e IP, 30 per IP, in 15 minuti.

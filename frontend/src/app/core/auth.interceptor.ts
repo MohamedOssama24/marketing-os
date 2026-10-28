@@ -22,6 +22,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         auth.clearSession();
         router.navigate(['/login']);
       }
+      // Organizzazione sospesa dall'amministratore mentre la sessione era aperta.
+      if (isApi && !isAuthCall && err.status === 403 && err.error?.error === 'account_suspended') {
+        auth.clearSession();
+        router.navigate(['/login'], { queryParams: { sospeso: 1 } });
+      }
       return throwError(() => err);
     }),
   );

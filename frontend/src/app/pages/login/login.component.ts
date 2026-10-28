@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { apiErrorMessage } from '../../core/models';
 
@@ -37,7 +37,10 @@ export class LoginComponent {
   private router = inject(Router);
 
   loading = signal(false);
-  error = signal<string | null>(null);
+  // Arrivo qui perché l'organizzazione è stata sospesa durante la sessione.
+  error = signal<string | null>(
+    inject(ActivatedRoute).snapshot.queryParamMap.has('sospeso') ? 'Questo account è sospeso. Contatta l\'assistenza.' : null,
+  );
 
   form = inject(FormBuilder).nonNullable.group({
     email: ['', [Validators.required, Validators.email]],

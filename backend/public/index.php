@@ -75,6 +75,14 @@ $router->add('GET', '/api/v1/calendar', [DashboardController::class, 'calendar']
 
 $router->add('GET', '/api/v1/jobs/{id}', [Jobs::class, 'show']);
 
+// Pannello della piattaforma (solo amministratori di piattaforma)
+$router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);
+$router->add('GET', '/api/v1/admin/organizations', [AdminController::class, 'organizations']);
+$router->add('GET', '/api/v1/admin/organizations/{id}', [AdminController::class, 'organization']);
+$router->add('PATCH', '/api/v1/admin/organizations/{id}', [AdminController::class, 'updateNotes']);
+$router->add('POST', '/api/v1/admin/organizations/{id}/suspend', [AdminController::class, 'suspend']);
+$router->add('POST', '/api/v1/admin/organizations/{id}/reactivate', [AdminController::class, 'reactivate']);
+
 try {
     $router->dispatch($method, $path);
 } catch (Throwable $e) {

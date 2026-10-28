@@ -331,6 +331,44 @@ foreach (['http://nginx/', 'http://169.254.169.254/latest/meta-data/', 'http://1
     check("Bloccato {$internal}", ($result['status'] ?? '') === 'failed' && preg_match('/non (è )?consentit|porte standard/i', $result['error'] ?? ''), json_encode($result));
 }
 
+echo "\nPannello Admin della piattaforma\n";
+foreach (['GET /admin/overview', 'GET /admin/organizations', 'GET /admin/organizations/1'] as $route) {
+    [$m, $p] = explode(' ', $route);
+    expectStatus("Un titolare normale non accede a {$p}", req($m, $p, $a['token']), 403);
+}
+$orgB = req('GET', '/me', $b['token'])[1]['data']['user']['organization_id'];
+expectStatus('Un titolare normale non sospende organizzazioni', req('POST', "/admin/organizations/{$orgB}/suspend", $a['token'], ['reason' => 'X']), 403);
+
+$admin = register('Admin');
+exec('php ' . escapeshellarg(__DIR__ . '/../bin/make-admin.php') . ' ' . escapeshellarg($admin['email']), $out, $code);
+check('Nomina amministratore da riga di comando', $code === 0, implode("\n", $out));
+check('/me indica l\'amministratore di piattaforma', (req('GET', '/me', $admin['token'])[1]['data']['user']['is_platform_admin'] ?? false) === true);
+$overview = req('GET', '/admin/overview', $admin['token']);
+check('Panoramica della piattaforma', $overview[0] === 200 && ($overview[1]['data']['organizations'] ?? 0) >= 3, $overview[2]);
+$found = req('GET', '/admin/organizations?q=' . urlencode($a['email']), $admin['token'])[1]['data'] ?? [];
+check('Ricerca per email del titolare', count($found) === 1 && $found[0]['owner_email'] === $a['email'] && $found[0]['clients_count'] >= 1, json_encode($found));
+$orgA = $found[0]['id'] ?? 0;
+$detail = req('GET', "/admin/organizations/{$orgA}", $admin['token'])[1]['data'] ?? [];
+check('Scheda organizzazione con utenti, clienti e attività', in_array($a['email'], array_column($detail['users'] ?? [], 'email'), true) && !empty($detail['clients']) && !empty($detail['activity']));
+expectStatus('Organizzazione inesistente', req('GET', '/admin/organizations/999999', $admin['token']), 404);
+
+expectStatus('Sospensione senza motivo rifiutata', req('POST', "/admin/organizations/{$orgB}/suspend", $admin['token'], []), 422);
+$adminOrg = req('GET', '/me', $admin['token'])[1]['data']['user']['organization_id'];
+expectStatus("L'amministratore non sospende la propria organizzazione", req('POST', "/admin/organizations/{$adminOrg}/suspend", $admin['token'], ['reason' => 'X']), 409);
+$suspended = req('POST', "/admin/organizations/{$orgB}/suspend", $admin['token'], ['reason' => 'Pagamento non ricevuto']);
+check('Organizzazione sospesa', ($suspended[1]['data']['organization']['status'] ?? '') === 'suspended', $suspended[2]);
+$blocked = req('GET', '/projects', $b['token']);
+check('Le sessioni aperte della sospesa sono chiuse', in_array($blocked[0], [401, 403], true), $blocked[2]);
+$bLogin = req('POST', '/auth/login', null, ['email' => $b['email'], 'password' => 'Local-Test-Password-123']);
+check('La sospesa non può accedere', $bLogin[0] === 403 && ($bLogin[1]['error'] ?? '') === 'account_suspended', $bLogin[2]);
+check('Le sospese si filtrano', in_array($orgB, array_column(req('GET', '/admin/organizations?status=suspended', $admin['token'])[1]['data'] ?? [], 'id')));
+expectStatus('Riattivazione', req('POST', "/admin/organizations/{$orgB}/reactivate", $admin['token']), 200);
+$b['token'] = login($b['email']);
+check('Dopo la riattivazione si accede di nuovo', $b['token'] !== '' && req('GET', '/projects', $b['token'])[0] === 200);
+$notes = req('PATCH', "/admin/organizations/{$orgA}", $admin['token'], ['admin_notes' => 'Cliente pilota, chiamare a novembre']);
+check('Note interne salvate', ($notes[1]['data']['organization']['admin_notes'] ?? '') === 'Cliente pilota, chiamare a novembre', $notes[2]);
+check('Le note non sono visibili all\'organizzazione', !str_contains(req('GET', '/me', $a['token'])[2], 'Cliente pilota'));
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -127,6 +127,19 @@ export class ApiService {
   rejectContent = (id: number, note: string) => this.post<ContentItem>(`/content/${id}/reject`, { note });
   generate = (projectId: number, req: GenerateRequest) => this.post<Job>(`/projects/${projectId}/generate`, req);
   job = (id: number) => this.get<Job>(`/jobs/${id}`);
+
+  // Pannello Admin della piattaforma
+  adminOverview = () => this.get<AdminOverview>('/admin/overview');
+  adminOrganizations(q = '', status = ''): Observable<AdminOrganization[]> {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status) params.set('status', status);
+    return this.get<AdminOrganization[]>(`/admin/organizations${params.toString() ? '?' + params : ''}`);
+  }
+  adminOrganization = (id: number) => this.get<AdminOrganizationDetail>(`/admin/organizations/${id}`);
+  adminSuspend = (id: number, reason: string) => this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/suspend`, { reason });
+  adminReactivate = (id: number) => this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/reactivate`);
+  adminNotes = (id: number, notes: string) => this.patch<AdminOrganizationDetail>(`/admin/organizations/${id}`, { admin_notes: notes });
 
   // Team
   team = () => this.get<TeamMember[]>('/users');

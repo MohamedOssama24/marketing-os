@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, guestGuard } from './core/auth.guards';
+import { adminGuard, authGuard, guestGuard } from './core/auth.guards';
 import { ShellComponent } from './layout/shell.component';
 
 export const routes: Routes = [
@@ -19,6 +19,8 @@ export const routes: Routes = [
       { path: 'approvals', loadComponent: () => import('./pages/approvals/approvals.component').then((m) => m.ApprovalsComponent) },
       { path: 'assets', loadComponent: () => import('./pages/assets/assets.component').then((m) => m.AssetsComponent) },
       { path: 'team', loadComponent: () => import('./pages/team/team.component').then((m) => m.TeamComponent) },
+      { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent) },
+      { path: 'admin/organizations/:id', canActivate: [adminGuard], loadComponent: () => import('./pages/admin/admin-organization.component').then((m) => m.AdminOrganizationComponent) },
       // Indirizzi della versione precedente
       { path: 'projects', redirectTo: 'campaigns' },
       { path: 'projects/:id', redirectTo: 'campaigns/:id' },

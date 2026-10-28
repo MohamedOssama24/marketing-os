@@ -37,6 +37,52 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  /** Amministratore della piattaforma: vede il pannello Admin con tutte le organizzazioni */
+  is_platform_admin?: boolean;
+}
+
+export interface AdminOverview {
+  organizations: number;
+  suspended: number;
+  new_last_30_days: number;
+  users: number;
+  active_users_7_days: number;
+  clients: number;
+  campaigns: number;
+  content: number;
+  published_this_month: number;
+  ai_jobs_this_month: number;
+  videos_this_month: number;
+  failed_jobs_7_days: number;
+  storage_bytes: number;
+}
+
+export interface AdminOrganization {
+  id: number;
+  name: string;
+  slug: string;
+  status: 'active' | 'suspended';
+  suspended_at: string | null;
+  suspended_reason: string | null;
+  created_at: string;
+  owner_email: string | null;
+  users_count: number;
+  last_login_at: string | null;
+  clients_count: number;
+  campaigns_count: number;
+  content_count: number;
+  published_count: number;
+  jobs_this_month: number;
+  storage_bytes: number;
+  admin_notes?: string | null;
+}
+
+export interface AdminOrganizationDetail {
+  organization: AdminOrganization;
+  users: { id: number; name: string; email: string; role: Role; is_platform_admin: boolean; last_login_at: string | null; created_at: string }[];
+  clients: { id: number; name: string; website_url: string | null; primary_color: string | null; campaigns_count: number; created_at: string }[];
+  recent_jobs: { id: number; type: string; status: string; error: string | null; created_at: string; finished_at: string | null }[];
+  activity: { action: string; entity_type: string; entity_id: number | null; created_at: string; user_name: string | null }[];
 }
 
 export interface TeamMember {

@@ -20,6 +20,8 @@ export class AuthService {
   readonly canEdit = computed(() => ['owner', 'admin', 'editor'].includes(this.user()?.role ?? ''));
   /** Può approvare contenuti e gestire il team (owner, admin). */
   readonly canManage = computed(() => ['owner', 'admin'].includes(this.user()?.role ?? ''));
+  /** Amministratore della piattaforma (pannello Admin). Il server lo verifica comunque a ogni richiesta. */
+  readonly isPlatformAdmin = computed(() => this.user()?.is_platform_admin === true);
 
   get token(): string | null {
     return this.tokenSignal();
