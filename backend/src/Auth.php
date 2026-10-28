@@ -11,7 +11,7 @@ final class Auth
         $token = Http::bearerToken();
         if (!$token) Http::json(['error' => 'unauthorized', 'message' => 'Token Bearer mancante.'], 401);
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('SELECT u.id, u.organization_id, u.name, u.email, u.role, u.is_platform_admin, o.status AS organization_status, t.id AS token_id
+        $stmt = $pdo->prepare('SELECT u.id, u.organization_id, o.name AS organization_name, u.name, u.email, u.role, u.is_platform_admin, o.status AS organization_status, t.id AS token_id
             FROM api_tokens t JOIN users u ON u.id=t.user_id JOIN organizations o ON o.id=u.organization_id
             WHERE t.token_hash=? AND t.expires_at > UTC_TIMESTAMP() LIMIT 1');
         $stmt->execute([hash('sha256', $token)]);

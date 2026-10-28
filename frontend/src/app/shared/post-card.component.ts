@@ -5,7 +5,7 @@ import { Observable, switchMap } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { ApiService } from '../core/api.service';
 import {
-  Asset, Brand, CHANNEL_LABELS, CONTENT_STATUS_LABELS, ContentItem, LAYOUT_LABELS, Visual, VisualLayout, apiErrorMessage,
+  Asset, Brand, CHANNEL_LABELS, CONTENT_STATUS_LABELS, ContentItem, LAYOUT_LABELS, REPURPOSE_FORMATS, Visual, VisualLayout, apiErrorMessage,
 } from '../core/models';
 import { PostVisualComponent } from './post-visual.component';
 import { AssetPreviewComponent } from './asset-preview.component';
@@ -78,7 +78,10 @@ export const CHANNEL_ICONS: Record<string, string> = {
       </div>
 
       @if (item.review_note) {
-        <div class="review-note" [class.rejected]="item.status === 'rejected'"><strong>Nota:</strong> {{ item.review_note }}</div>
+        <div class="review-note" [class.rejected]="item.status === 'rejected'">
+          @if (item.reviewed_via === 'portal') { <i class="ti ti-door-enter" aria-hidden="true" title="Dal portale del cliente"></i> } @else { <strong>Nota:</strong> }
+          {{ item.review_note }}
+        </div>
       }
 
       @if (editing()) {
@@ -139,6 +142,23 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <div class="actions"><button class="btn ghost small" (click)="rewriting.set(false)">Annulla</button></div>
           }
         </div>
+      } @else if (repurposing()) {
+        <div class="edit-panel rewrite-panel">
+          @if (repurposeBusy()) {
+            <p class="rewrite-progress"><span class="spinner"></span> Preparo {{ formats().length === 1 ? 'il nuovo formato' : 'i ' + formats().length + ' nuovi formati' }}…</p>
+          } @else {
+            <p class="small muted">Trasforma questo contenuto in altri formati: arrivano come bozze nella stessa campagna. Massimo 5.</p>
+            <div class="quick-picks">
+              @for (f of repurposeFormats; track f.key) {
+                <button class="chip" [class.active]="formats().includes(f.key)" (click)="toggleFormat(f.key)"><i class="ti" [class]="'ti ' + f.icon" aria-hidden="true"></i> {{ f.label }}</button>
+              }
+            </div>
+            <div class="actions">
+              <button class="btn ghost small" (click)="repurposing.set(false)">Annulla</button>
+              <button class="btn primary small" (click)="repurpose()" [disabled]="!formats().length"><i class="ti ti-arrows-split" aria-hidden="true"></i> Crea {{ formats().length || '' }}</button>
+            </div>
+          }
+        </div>
       } @else if (makingVideo()) {
         <div class="edit-panel rewrite-panel">
           @if (videoBusy()) {
@@ -172,6 +192,7 @@ export const CHANNEL_ICONS: Record<string, string> = {
           <button class="icon-btn" (click)="download()" aria-label="Scarica grafica" title="Scarica grafica PNG"><i class="ti ti-download" aria-hidden="true"></i></button>
           @if (auth.canEdit() && item.status !== 'published') {
             <button class="icon-btn" (click)="makingVideo.set(true)" aria-label="Crea video" title="Crea un video da questo post"><i class="ti ti-movie" aria-hidden="true"></i></button>
+            <button class="icon-btn ai" (click)="repurposing.set(true)" aria-label="Altri formati" title="Trasforma in altri formati (carosello, reel, newsletter…)"><i class="ti ti-arrows-split" aria-hidden="true"></i></button>
           }
           @if (canUploadPhoto()) {
             <button class="icon-btn" (click)="photoInput.click()" [disabled]="uploadingPhoto()" aria-label="Carica foto" title="Carica una foto per questo post"><i class="ti ti-photo-up" aria-hidden="true"></i></button>
@@ -208,6 +229,8 @@ export class PostCardComponent {
   @Input() assets: Asset[] = [];
   @Output() changed = new EventEmitter<ContentItem>();
   @Output() removed = new EventEmitter<number>();
+  /** Nuovi contenuti creati da questo (altri formati). */
+  @Output() added = new EventEmitter<number[]>();
   @ViewChild('visualRef') visualRef?: PostVisualComponent;
 
   readonly auth = inject(AuthService);
@@ -230,6 +253,10 @@ export class PostCardComponent {
   rejecting = signal(false);
   rewriting = signal(false);
   rewriteBusy = signal(false);
+  repurposing = signal(false);
+  repurposeBusy = signal(false);
+  formats = signal<string[]>([]);
+  readonly repurposeFormats = REPURPOSE_FORMATS;
   expanded = signal(false);
   copied = signal(false);
   busy = signal(false);
@@ -389,6 +416,35 @@ export class PostCardComponent {
     // Per gli stili con foto propone la prima foto del cliente, se il post non ne ha una.
     if ((next === 'photo' || next === 'split') && !visual.asset_id) visual.asset_id = this.images[0]?.id ?? null;
     this.run(this.api.updateContent(this.item.id, { visual }));
+  }
+
+  toggleFormat(key: string): void {
+    this.formats.update((list) => (list.includes(key) ? list.filter((k) => k !== key) : list.length < 5 ? [...list, key] : list));
+  }
+
+  /** Nuove bozze negli altri formati scelti, nella stessa campagna. */
+  repurpose(): void {
+    this.repurposeBusy.set(true);
+    this.error.set(null);
+    this.api
+      .repurposeContent(this.item.id, this.formats())
+      .pipe(switchMap((job) => this.api.waitForJob(job.id)))
+      .subscribe({
+        next: (job) => {
+          this.repurposeBusy.set(false);
+          if (job.status === 'failed') {
+            this.error.set(job.error ?? 'Trasformazione non riuscita.');
+            return;
+          }
+          this.repurposing.set(false);
+          this.formats.set([]);
+          this.added.emit(job.result?.content_ids ?? []);
+        },
+        error: (err) => {
+          this.repurposeBusy.set(false);
+          this.error.set(apiErrorMessage(err));
+        },
+      });
   }
 
   rewrite(instruction: string): void {

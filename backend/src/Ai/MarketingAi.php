@@ -41,6 +41,34 @@ interface MarketingAi
      * @return array{title: string, body: string, call_to_action: string, hashtags: list<string>, visual: array, reviewer_notes: string}
      */
     public function rewriteContent(array $brand, array $item, string $instruction): array;
+
+    /**
+     * Audit del sito di un potenziale cliente: cosa funziona, cosa migliorare, idee di post e servizi da proporre.
+     * @param list<array{key: string, ok: bool, label: string, detail: string}> $checks controlli automatici (SiteChecks::run)
+     * @return array{name: string, summary: string, strengths: list<string>, issues: list<array{title: string, detail: string, fix: string}>,
+     *   post_ideas: list<array{channel: string, title: string, body: string}>, services: list<array{name: string, description: string}>, pitch: string}
+     */
+    public function prospectAudit(array $site, array $checks): array;
+
+    /**
+     * Trasforma un contenuto in altri formati (carosello, reel, newsletter…).
+     * @param list<string> $formats chiavi di Repurpose::FORMATS
+     * @return list<array{format: string, title: string, body: string, call_to_action: string, hashtags: list<string>, visual: array, reviewer_notes: string}>
+     */
+    public function repurposeContent(array $brand, array $item, array $formats): array;
+
+    /**
+     * Risposte alternative a una recensione, nel tono del brand.
+     * @param array{platform: string, rating: int, author: ?string, text: string} $review
+     * @return list<string>
+     */
+    public function reviewReplies(array $brand, array $review): array;
+
+    /**
+     * Cosa comunica un concorrente sul suo sito e quali spazi lascia al cliente.
+     * @return array{summary: string, offers: list<string>, messages: list<string>, tone: string, opportunities: list<string>}
+     */
+    public function competitorBrief(array $brand, array $site): array;
 }
 
 final class MarketingAis

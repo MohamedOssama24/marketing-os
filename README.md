@@ -9,6 +9,15 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Link e clic**: link brevi da mettere nei post che contano quante persone cliccano, da quale social e da quale dispositivo, e portano al sito con i parametri UTM.
 - **Report clienti**: ogni mese un report con i colori e il logo del cliente (post pubblicati, clic, sponsorizzate, confronto con il mese prima e il commento dell'agenzia), da scaricare in PDF o da mandare con un link che il cliente apre senza account; si vede quando lo apre.
 - **Fatturazione**: ogni mese una fattura per cliente con canone, sponsorizzate da rifatturare e commissione; stati da fatturare → fatturata → pagata ed export CSV per il commercialista.
+- **Potenziali clienti**: inserisci il sito di un'attività e ottieni un audit gratuito con punteggio, problemi da risolvere, idee di post e servizi da proporre; aggiungi il canone, mandalo con un link (vedi quando lo aprono) e, se accettano, trasformali in clienti con un clic.
+- **L'AI impara lo stile di ogni cliente**: le correzioni approvate e le richieste di modifica diventano esempi che l'AI segue nei testi successivi.
+- **Un contenuto, tanti formati**: da un post a carosello, copione per Reel, newsletter, articolo e post per gli altri social.
+- **Portale del cliente**: un link senza account dove il cliente approva i post o chiede modifiche, vede cosa uscirà, apre i report e manda richieste.
+- **Ore e redditività**: timer e ore per cliente, costo orario dell'agenzia, margine e guadagno orario reale di ogni cliente.
+- **Recensioni**: l'AI propone tre risposte nel tono del cliente a recensioni di Google, Facebook, TripAdvisor.
+- **Concorrenti**: fino a 5 per cliente, rianalizzati ogni settimana, con spunti per distinguersi e il link alle loro inserzioni attive.
+- **Ricorrenze e avvisi**: festività e date commerciali nel calendario; avvisi su approvazioni ferme, budget superati, settimane senza post, report non aperti, fatture scadute.
+- Ricerca rapida con Ctrl+K, tema scuro, app installabile sul telefono.
 - Team con ruoli, libreria file, isolamento tra organizzazioni.
 
 ## Generazione con l'AI
@@ -35,7 +44,7 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 docker compose exec app php tests/isolation.php
 ```
 
-Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 
 Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
 

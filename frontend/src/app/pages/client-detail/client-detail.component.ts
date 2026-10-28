@@ -10,6 +10,9 @@ import { Asset, Brand, CHANNEL_LABELS, Channel, GoalSuggestion, Project, apiErro
 import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { BrandFormComponent } from '../../shared/brand-form.component';
 import { MetaAdsSetupComponent } from '../../shared/meta-ads-setup.component';
+import { CompetitorsPanelComponent } from '../../shared/competitors-panel.component';
+import { PortalPanelComponent } from '../../shared/portal-panel.component';
+import { StylePanelComponent } from '../../shared/style-panel.component';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
 import { PROJECT_STATUS_LABELS } from '../projects/projects.component';
 
@@ -18,7 +21,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent],
+  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent, PortalPanelComponent, StylePanelComponent, CompetitorsPanelComponent],
   template: `
     <a routerLink="/clients" class="back"><i class="ti ti-arrow-left" aria-hidden="true"></i> Clienti</a>
 
@@ -193,6 +196,11 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
             </section>
           </div>
         </div>
+        <div class="growth-grid">
+          <app-portal-panel [brandId]="b.id" />
+          <app-style-panel [brandId]="b.id" />
+        </div>
+        <app-competitors-panel [brandId]="b.id" />
         <app-meta-ads-setup [brandId]="b.id" />
       }
     } @else if (error()) {
@@ -246,7 +254,14 @@ export class ClientDetailComponent implements OnInit {
   ngOnInit(): void {
     if (this.isNew()) return;
     const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.api.brand(id).subscribe({ next: (b) => this.brand.set(b), error: (err) => this.error.set(apiErrorMessage(err, 'Cliente non trovato.')) });
+    this.api.brand(id).subscribe({
+      next: (b) => {
+        this.brand.set(b);
+        // Dagli avvisi "nuova richiesta" si arriva direttamente al portale.
+        if (this.route.snapshot.queryParamMap.get('tab') === 'portal') setTimeout(() => document.getElementById('portal')?.scrollIntoView({ behavior: 'smooth' }), 300);
+      },
+      error: (err) => this.error.set(apiErrorMessage(err, 'Cliente non trovato.')),
+    });
     this.api.projects().subscribe((list) => this.projects.set(list));
     this.loadPhotos(id);
   }

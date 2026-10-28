@@ -246,6 +246,64 @@ Pubblici, senza token (il frontend li apre da `/report/{token}`):
 
 Il PDF si ottiene dal browser con "Scarica PDF" (stampa → Salva come PDF): il foglio di stile di stampa mostra solo il report, in formato A4.
 
+## Potenziali clienti e audit gratuito
+
+L'agenzia inserisce il sito di un'attività che vuole come cliente; il worker lo legge (stessa protezione SSRF dell'analisi dei siti), esegue 8 controlli automatici (HTTPS, titolo e descrizione per Google, social, contatti, testi, blog, identità visiva) da cui nasce il punteggio, e l'AI scrive punti di forza, problemi con la soluzione, 3 idee di post, servizi da proporre e chiusura.
+
+- `GET /prospects` — elenco con `score`, `status` (`new`, `sent`, `won`, `lost`), `analyzing`, aperture. Tutti i ruoli.
+- `POST /prospects` — owner, admin, editor. `{ "url" }`. Risponde `202` e avvia l'audit (`job_id`).
+- `GET /prospects/{id}` — dettaglio con `audit`.
+- `PATCH /prospects/{id}` — `status`, `name`, `monthly_fee` (canone proposto), `agency_note` (chiusura personale, sostituisce quella dell'AI).
+- `POST /prospects/{id}/reanalyze`, `DELETE /prospects/{id}`.
+- `POST /prospects/{id}/share` — link pubblico; lo stato passa da `new` a `sent`. `409` se l'audit non è pronto. `POST /prospects/{id}/unshare` lo disattiva.
+- `POST /prospects/{id}/convert` — crea il cliente dallo stesso sito (brand kit, logo, foto) e segna il potenziale cliente come `won`; risponde con il lavoro, il cui risultato contiene `brand_id`.
+- `GET /public/audits/{token}` — pubblico, senza token: l'audit con canone proposto e nome dell'agenzia; ogni richiesta conta come apertura. Il frontend lo apre da `/audit/{token}`.
+
+## Stile appreso e altri formati
+
+Quando un post scritto dall'AI viene corretto e poi approvato, la coppia testo dell'AI / versione approvata diventa un esempio di stile del cliente; quando qualcuno chiede modifiche, la nota diventa una regola. Gli ultimi 6 esempi vengono passati all'AI in ogni generazione, riscrittura e trasformazione per quel cliente (si tengono gli ultimi 30).
+
+- `GET /brands/{id}/style-examples` — `kind` (`edit` o `feedback`), `before_text`, `after_text`. Tutti i ruoli.
+- `DELETE /style-examples/{id}` — owner, admin, editor: l'AI smette di seguire quell'esempio.
+- `POST /content/{id}/repurpose` — owner, admin, editor. `{ "formats": [...] }` da 1 a 5 tra `instagram_post`, `carosello`, `reel`, `facebook`, `linkedin`, `newsletter`, `blog`. Crea nuove bozze nella stessa campagna; il risultato del lavoro contiene `content_ids`.
+
+## Ore e redditività
+
+- `GET /time-entries?period=AAAA-MM&brand_id=` — ore segnate nel mese. Tutti i ruoli.
+- `POST /time-entries` — owner, admin, editor. `{ "brand_id", "minutes" (1-1440), "worked_on"?, "note"? }`.
+- `DELETE /time-entries/{id}` — le proprie ore; owner e admin anche quelle degli altri.
+- `GET /profitability?period=` — solo owner e admin. Per cliente: ore, ricavo (voci della fattura del mese escluse le sponsorizzate rifatturate; senza fattura, stima da canone e commissione: `revenue_estimated`), costo (ore × costo orario), margine, margine % e guadagno orario. Ordinati dal meno redditizio.
+- `PATCH /profitability/settings` — solo owner e admin. `{ "hourly_cost" }` costo orario medio dell'agenzia.
+
+## Recensioni, ricorrenze, avvisi
+
+- `POST /brands/{id}/review-replies/suggest` — owner, admin, editor. `{ "platform" (google, facebook, tripadvisor, trustpilot, other), "rating" (1-5), "author"?, "review_text" }`. Lavoro in background con 3 risposte in `result.replies`.
+- `GET /review-replies?brand_id=`, `POST /review-replies` (gli stessi campi più `brand_id` e `reply`), `DELETE /review-replies/{id}`.
+- `GET /occasions?from=AAAA-MM-GG&to=AAAA-MM-GG` — festività italiane, giornate mondiali e date commerciali con un'idea per i contenuti (date mobili come Pasqua e Black Friday calcolate per anno). Massimo un anno.
+- `GET /alerts` — avvisi calcolati al momento: richieste dal portale, post in approvazione da più di 3 giorni, modifiche chieste dal cliente, sponsorizzate oltre il budget, campagne attive senza post nei prossimi 7 giorni, report condivisi e non aperti, fatture scadute (solo owner e admin). Ognuno ha `severity`, `link` e `query` per il frontend.
+
+## Portale del cliente
+
+Un link senza account per cliente. Dal portale il cliente approva o chiede modifiche ai post in revisione (la nota è firmata con il nome che indica), vede i post in programma e quelli pubblicati, apre i report condivisi e manda richieste. Le note interne per il revisore non arrivano mai al cliente.
+
+- `GET /brands/{id}/portal` — `token` e richieste del cliente. `POST /brands/{id}/portal/enable` e `/disable` (owner, admin, editor); riattivandolo il link cambia.
+- `PATCH /client-requests/{id}` — `{ "status": "open" | "done" }`.
+
+Pubblici, senza token (il frontend li apre da `/portal/{token}`), con un limite di 60 azioni ogni 10 minuti per IP:
+
+- `GET /public/portal/{token}` — cliente, agenzia, `pending`, `upcoming`, `published`, `reports`, `requests`.
+- `POST /public/portal/{token}/content/{id}/approve` — `{ "name"?, "note"? }`; `POST .../reject` — `{ "name"?, "note" }`. Solo post di quel cliente in revisione (`409` altrimenti); nell'app risultano con `reviewed_via: "portal"`.
+- `POST /public/portal/{token}/requests` — `{ "name"?, "message" }`.
+- `GET /public/portal/{token}/assets/{id}` — logo e foto del cliente o usate nei suoi post.
+
+## Concorrenti
+
+Fino a 5 per cliente. Il worker legge il sito (protezione SSRF) e l'AI riassume offerte, messaggi, tono e come distinguersi; i concorrenti già analizzati si rianalizzano da soli ogni 7 giorni.
+
+- `GET /brands/{id}/competitors` — con `analysis`, `last_checked_at` e `ad_library_url` (Libreria inserzioni di Meta, che in UE mostra tutte le inserzioni attive).
+- `POST /brands/{id}/competitors` — owner, admin, editor. `{ "url", "name"? }`, risponde `202`.
+- `POST /competitors/{id}/refresh`, `DELETE /competitors/{id}`.
+
 ## Fatturazione
 
 Solo owner e admin. Una fattura al mese per cliente, con stati `to_invoice` → `invoiced` → `paid`. La fattura elettronica si emette nel gestionale o dal commercialista: qui si preparano gli importi, si registra il numero e si segue il pagamento.

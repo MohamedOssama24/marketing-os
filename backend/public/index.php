@@ -25,6 +25,14 @@ if (preg_match('#^/r/([A-Za-z0-9]{4,16})$#', $path, $linkMatch) && in_array($met
 if (preg_match('#^/api/v1/public/reports/([a-f0-9]{32})(/logo)?$#', $path, $reportMatch) && $method === 'GET') {
     empty($reportMatch[2]) ? ReportController::publicShow($reportMatch[1]) : ReportController::publicLogo($reportMatch[1]);
 }
+// Audit gratuito aperto dal potenziale cliente.
+if (preg_match('#^/api/v1/public/audits/([a-f0-9]{32})$#', $path, $auditMatch) && $method === 'GET') {
+    ProspectController::publicShow($auditMatch[1]);
+}
+// Portale del cliente: approvazioni, programmazione, report e richieste, senza accesso.
+if (preg_match('#^/api/v1/public/portal/([a-f0-9]{32})(/.*)?$#', $path, $portalMatch)) {
+    PortalController::publicRoute($portalMatch[1], $portalMatch[2] ?? '', $method);
+}
 
 $router = new Router();
 $router->add('GET', '/api/v1/health', function (): never {
@@ -120,6 +128,47 @@ $router->add('GET', '/api/v1/brands/{brandId}/report', [ReportController::class,
 $router->add('PATCH', '/api/v1/brands/{brandId}/report', [ReportController::class, 'update']);
 $router->add('POST', '/api/v1/brands/{brandId}/report/share', [ReportController::class, 'share']);
 $router->add('POST', '/api/v1/brands/{brandId}/report/unshare', [ReportController::class, 'unshare']);
+
+// Potenziali clienti e audit gratuito
+$router->add('GET', '/api/v1/prospects', [ProspectController::class, 'index']);
+$router->add('POST', '/api/v1/prospects', [ProspectController::class, 'store']);
+$router->add('GET', '/api/v1/prospects/{id}', [ProspectController::class, 'show']);
+$router->add('PATCH', '/api/v1/prospects/{id}', [ProspectController::class, 'update']);
+$router->add('DELETE', '/api/v1/prospects/{id}', [ProspectController::class, 'destroy']);
+$router->add('POST', '/api/v1/prospects/{id}/reanalyze', [ProspectController::class, 'reanalyze']);
+$router->add('POST', '/api/v1/prospects/{id}/share', [ProspectController::class, 'share']);
+$router->add('POST', '/api/v1/prospects/{id}/unshare', [ProspectController::class, 'unshare']);
+$router->add('POST', '/api/v1/prospects/{id}/convert', [ProspectController::class, 'convert']);
+
+// Stile appreso dall'AI, nuovi formati da un contenuto
+$router->add('GET', '/api/v1/brands/{brandId}/style-examples', [StyleController::class, 'index']);
+$router->add('DELETE', '/api/v1/style-examples/{id}', [StyleController::class, 'destroy']);
+$router->add('POST', '/api/v1/content/{id}/repurpose', [ContentController::class, 'repurpose']);
+
+// Ore lavorate e redditività per cliente
+$router->add('GET', '/api/v1/time-entries', [ProfitController::class, 'entries']);
+$router->add('POST', '/api/v1/time-entries', [ProfitController::class, 'storeEntry']);
+$router->add('DELETE', '/api/v1/time-entries/{id}', [ProfitController::class, 'destroyEntry']);
+$router->add('GET', '/api/v1/profitability', [ProfitController::class, 'summary']);
+$router->add('PATCH', '/api/v1/profitability/settings', [ProfitController::class, 'updateSettings']);
+
+// Recensioni, ricorrenze, avvisi
+$router->add('GET', '/api/v1/review-replies', [ReviewController::class, 'index']);
+$router->add('POST', '/api/v1/review-replies', [ReviewController::class, 'store']);
+$router->add('DELETE', '/api/v1/review-replies/{id}', [ReviewController::class, 'destroy']);
+$router->add('POST', '/api/v1/brands/{brandId}/review-replies/suggest', [ReviewController::class, 'suggest']);
+$router->add('GET', '/api/v1/occasions', [OccasionController::class, 'index']);
+$router->add('GET', '/api/v1/alerts', [AlertController::class, 'index']);
+
+// Portale del cliente e concorrenti
+$router->add('GET', '/api/v1/brands/{brandId}/portal', [PortalController::class, 'show']);
+$router->add('POST', '/api/v1/brands/{brandId}/portal/enable', [PortalController::class, 'enable']);
+$router->add('POST', '/api/v1/brands/{brandId}/portal/disable', [PortalController::class, 'disable']);
+$router->add('PATCH', '/api/v1/client-requests/{id}', [PortalController::class, 'updateRequest']);
+$router->add('GET', '/api/v1/brands/{brandId}/competitors', [CompetitorController::class, 'index']);
+$router->add('POST', '/api/v1/brands/{brandId}/competitors', [CompetitorController::class, 'store']);
+$router->add('POST', '/api/v1/competitors/{id}/refresh', [CompetitorController::class, 'refresh']);
+$router->add('DELETE', '/api/v1/competitors/{id}', [CompetitorController::class, 'destroy']);
 
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);

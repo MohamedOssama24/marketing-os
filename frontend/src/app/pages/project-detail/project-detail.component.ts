@@ -142,7 +142,7 @@ const CAMPAIGN_STEPS = ['Definisco la strategia', 'Pianifico il calendario', 'Sc
 
       <div class="feed">
         @for (c of visibleContent(); track c.id) {
-          <app-post-card [item]="c" [brand]="brand()" [assets]="assets()" (changed)="replace($event)" (removed)="removePost($event)" />
+          <app-post-card [item]="c" [brand]="brand()" [assets]="assets()" (changed)="replace($event)" (removed)="removePost($event)" (added)="loadContent()" />
         } @empty {
           @if (!planning()) {
             <div class="card empty">
@@ -326,7 +326,7 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  private loadContent(): void {
+  loadContent(): void {
     this.api.content(this.projectId).subscribe({
       next: (list) => this.content.set(list),
       error: (err) => this.error.set(apiErrorMessage(err)),

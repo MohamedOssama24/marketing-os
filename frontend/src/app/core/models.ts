@@ -34,6 +34,8 @@ export const CONTENT_STATUS_LABELS: Record<ContentStatus, string> = {
 export interface User {
   id: number;
   organization_id: number;
+  /** Nome dell'agenzia */
+  organization_name?: string;
   name: string;
   email: string;
   role: Role;
@@ -212,6 +214,8 @@ export interface ContentItem {
   job_id: number | null;
   review_note: string | null;
   reviewed_at: string | null;
+  /** portal se approvato o rifiutato dal cliente nel portale */
+  reviewed_via?: 'app' | 'portal' | null;
   scheduled_at: string | null;
   published_at: string | null;
   published_url: string | null;
@@ -251,13 +255,15 @@ export interface Dashboard {
   week: CalendarItem[];
 }
 
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
+
 export interface Job {
   id: number;
   type: string;
-  status: 'queued' | 'running' | 'done' | 'failed';
+  status: JobStatus;
   result: {
     content_ids?: number[]; content_id?: number; brand_id?: number; project_id?: number;
-    logo_found?: boolean; site_colors?: string[]; photos_imported?: number; goals?: GoalSuggestion[];
+    logo_found?: boolean; site_colors?: string[]; photos_imported?: number; goals?: GoalSuggestion[]; replies?: string[];
   } | null;
   error: string | null;
   created_at: string;
@@ -501,4 +507,207 @@ export interface ReportStatus {
   shared: boolean;
   views: number;
   last_viewed_at: string | null;
+}
+
+// Potenziali clienti e audit gratuito
+
+export type ProspectStatus = 'new' | 'sent' | 'won' | 'lost';
+
+export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = { new: 'Da contattare', sent: 'Audit inviato', won: 'Acquisito', lost: 'Perso' };
+
+export interface SiteCheck {
+  key: string;
+  ok: boolean;
+  label: string;
+  detail: string;
+}
+
+export interface ProspectAudit {
+  name: string;
+  summary: string;
+  score: number;
+  checks: SiteCheck[];
+  strengths: string[];
+  issues: { title: string; detail: string; fix: string }[];
+  post_ideas: { channel: Channel; title: string; body: string }[];
+  services: { name: string; description: string }[];
+  pitch: string;
+  colors: string[];
+  site_url: string;
+  analyzed_at: string;
+}
+
+export interface Prospect {
+  id: number;
+  url: string;
+  name: string | null;
+  status: ProspectStatus;
+  /** Solo nel dettaglio */
+  audit?: ProspectAudit | null;
+  /** Solo nell'elenco */
+  score?: number | null;
+  monthly_fee: number | null;
+  agency_note: string | null;
+  brand_profile_id: number | null;
+  share_token: string | null;
+  shared_at: string | null;
+  views: number;
+  last_viewed_at: string | null;
+  created_at: string;
+  job_id: number | null;
+  job_status: JobStatus | null;
+  job_error: string | null;
+  analyzing: boolean;
+}
+
+/** L'audit come lo vede il potenziale cliente dal link. */
+export interface PublicAudit {
+  name: string | null;
+  url: string;
+  audit: ProspectAudit;
+  monthly_fee: number | null;
+  agency_note: string | null;
+  agency: { name: string };
+}
+
+// Stile appreso, altri formati
+
+export interface StyleExample {
+  id: number;
+  content_item_id: number | null;
+  channel: Channel;
+  kind: 'edit' | 'feedback';
+  before_text: string | null;
+  after_text: string;
+  created_at: string;
+}
+
+export const REPURPOSE_FORMATS: { key: string; label: string; icon: string }[] = [
+  { key: 'instagram_post', label: 'Post Instagram', icon: 'ti-brand-instagram' },
+  { key: 'carosello', label: 'Carosello', icon: 'ti-carousel-horizontal' },
+  { key: 'reel', label: 'Copione Reel', icon: 'ti-movie' },
+  { key: 'facebook', label: 'Post Facebook', icon: 'ti-brand-facebook' },
+  { key: 'linkedin', label: 'Post LinkedIn', icon: 'ti-brand-linkedin' },
+  { key: 'newsletter', label: 'Newsletter', icon: 'ti-mail' },
+  { key: 'blog', label: 'Articolo blog', icon: 'ti-article' },
+];
+
+// Ore e redditività
+
+export interface TimeEntry {
+  id: number;
+  brand_profile_id: number;
+  brand_name: string;
+  user_id: number | null;
+  user_name: string | null;
+  worked_on: string;
+  minutes: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface ProfitClient {
+  id: number;
+  name: string;
+  primary_color: string | null;
+  logo_asset_id: number | null;
+  minutes: number;
+  revenue: number;
+  revenue_estimated: boolean;
+  cost: number | null;
+  margin: number | null;
+  margin_percent: number | null;
+  effective_rate: number | null;
+}
+
+export interface Profitability {
+  period: string;
+  hourly_cost: number | null;
+  clients: ProfitClient[];
+  totals: { minutes: number; revenue: number; cost: number | null; margin: number | null; effective_rate: number | null };
+}
+
+// Recensioni, ricorrenze, avvisi
+
+export type ReviewPlatform = 'google' | 'facebook' | 'tripadvisor' | 'trustpilot' | 'other';
+
+export const REVIEW_PLATFORMS: { key: ReviewPlatform; label: string; icon: string }[] = [
+  { key: 'google', label: 'Google', icon: 'ti-brand-google' },
+  { key: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook' },
+  { key: 'tripadvisor', label: 'TripAdvisor', icon: 'ti-plane' },
+  { key: 'trustpilot', label: 'Trustpilot', icon: 'ti-star' },
+  { key: 'other', label: 'Altro', icon: 'ti-message' },
+];
+
+export interface ReviewInput {
+  platform: ReviewPlatform;
+  rating: number;
+  author: string | null;
+  review_text: string;
+}
+
+export interface ReviewReply extends ReviewInput {
+  id: number;
+  brand_profile_id: number;
+  brand_name: string;
+  reply: string;
+  created_at: string;
+}
+
+export interface Occasion {
+  date: string;
+  name: string;
+  idea: string;
+  sectors: string[];
+}
+
+export interface Alert {
+  key: string;
+  severity: 'danger' | 'warning' | 'info';
+  icon: string;
+  title: string;
+  detail: string;
+  link: string;
+  query: Record<string, string | number>;
+}
+
+// Portale del cliente e concorrenti
+
+export interface ClientRequest {
+  id: number;
+  name: string | null;
+  message: string;
+  status: 'open' | 'done';
+  created_at: string;
+}
+
+export interface PortalSettings {
+  token: string | null;
+  requests: ClientRequest[];
+}
+
+export type PortalPost = Pick<ContentItem, 'id' | 'channel' | 'content_type' | 'title' | 'body' | 'visual' | 'status' | 'review_note' | 'scheduled_at' | 'published_at' | 'published_url'>;
+
+export interface PortalData {
+  client: { name: string; primary_color: string | null; secondary_color: string | null; font_family: string | null; logo_asset_id: number | null };
+  agency: { name: string };
+  pending: PortalPost[];
+  upcoming: PortalPost[];
+  published: PortalPost[];
+  reports: { period: string; token: string }[];
+  requests: ClientRequest[];
+}
+
+export interface Competitor {
+  id: number;
+  name: string;
+  url: string;
+  analysis: { summary: string; offers: string[]; messages: string[]; tone: string; opportunities: string[]; socials: Record<string, string> } | null;
+  last_checked_at: string | null;
+  created_at: string;
+  job_status: JobStatus | null;
+  job_error: string | null;
+  analyzing: boolean;
+  ad_library_url: string;
+  job_id: number | null;
 }

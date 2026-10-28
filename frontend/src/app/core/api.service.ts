@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, ClientReport, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, Alert, ClientReport, ClientRequest, Competitor, Occasion, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -212,4 +212,53 @@ export class ApiService {
   // Team
   team =() => this.get<TeamMember[]>('/users');
   addMember = (m: { name: string; email: string; password: string; role: Exclude<Role, 'owner'> }) => this.post<TeamMember>('/users', m);
+
+  // Potenziali clienti e audit gratuito
+  prospects = () => this.get<Prospect[]>('/prospects');
+  prospect = (id: number) => this.get<Prospect>(`/prospects/${id}`);
+  createProspect = (url: string) => this.post<Prospect>('/prospects', { url });
+  updateProspect = (id: number, data: Partial<Pick<Prospect, 'status' | 'name' | 'monthly_fee' | 'agency_note'>>) => this.patch<Prospect>(`/prospects/${id}`, data);
+  deleteProspect = (id: number) => this.delete(`/prospects/${id}`);
+  reanalyzeProspect = (id: number) => this.post<Prospect>(`/prospects/${id}/reanalyze`);
+  shareProspect = (id: number) => this.post<Prospect>(`/prospects/${id}/share`);
+  unshareProspect = (id: number) => this.post<Prospect>(`/prospects/${id}/unshare`);
+  convertProspect = (id: number) => this.post<Job>(`/prospects/${id}/convert`);
+  publicAudit = (token: string) => this.get<PublicAudit>(`/public/audits/${token}`);
+
+  // Stile appreso e altri formati
+  styleExamples = (brandId: number) => this.get<StyleExample[]>(`/brands/${brandId}/style-examples`);
+  deleteStyleExample = (id: number) => this.delete(`/style-examples/${id}`);
+  repurposeContent = (id: number, formats: string[]) => this.post<Job>(`/content/${id}/repurpose`, { formats });
+
+  // Ore e redditività
+  timeEntries(period: string, brandId?: number | null): Observable<TimeEntry[]> {
+    return this.get<TimeEntry[]>(`/time-entries?period=${period}${brandId ? `&brand_id=${brandId}` : ''}`);
+  }
+  addTimeEntry = (data: { brand_id: number; minutes: number; worked_on?: string; note?: string | null }) => this.post<{ id: number }>('/time-entries', data);
+  deleteTimeEntry = (id: number) => this.delete(`/time-entries/${id}`);
+  profitability = (period: string) => this.get<Profitability>(`/profitability?period=${period}`);
+  updateHourlyCost = (period: string, hourlyCost: number | null) => this.patch<Profitability>(`/profitability/settings?period=${period}`, { hourly_cost: hourlyCost });
+
+  // Recensioni, ricorrenze, avvisi
+  reviewReplies = (brandId?: number | null) => this.get<ReviewReply[]>(`/review-replies${brandId ? `?brand_id=${brandId}` : ''}`);
+  suggestReviewReplies = (brandId: number, review: ReviewInput) => this.post<Job>(`/brands/${brandId}/review-replies/suggest`, review);
+  saveReviewReply = (data: ReviewInput & { brand_id: number; reply: string }) => this.post<{ id: number }>('/review-replies', data);
+  deleteReviewReply = (id: number) => this.delete(`/review-replies/${id}`);
+  occasions = (from: string, to: string) => this.get<Occasion[]>(`/occasions?from=${from}&to=${to}`);
+  alerts = () => this.get<Alert[]>('/alerts');
+
+  // Portale del cliente e concorrenti
+  portal = (brandId: number) => this.get<PortalSettings>(`/brands/${brandId}/portal`);
+  enablePortal = (brandId: number) => this.post<PortalSettings>(`/brands/${brandId}/portal/enable`);
+  disablePortal = (brandId: number) => this.post<PortalSettings>(`/brands/${brandId}/portal/disable`);
+  updateClientRequest = (id: number, status: ClientRequest['status']) => this.patch<{ id: number; status: string }>(`/client-requests/${id}`, { status });
+  publicPortal = (token: string) => this.get<PortalData>(`/public/portal/${token}`);
+  publicPortalReview = (token: string, contentId: number, action: 'approve' | 'reject', data: { name?: string | null; note?: string | null }) =>
+    this.post<PortalPost>(`/public/portal/${token}/content/${contentId}/${action}`, data);
+  publicPortalRequest = (token: string, data: { name?: string | null; message: string }) => this.post<{ id: number }>(`/public/portal/${token}/requests`, data);
+  publicPortalAssetUrl = (token: string, assetId: number) => `${API_URL}/public/portal/${token}/assets/${assetId}`;
+  competitors = (brandId: number) => this.get<Competitor[]>(`/brands/${brandId}/competitors`);
+  addCompetitor = (brandId: number, url: string, name?: string | null) => this.post<Competitor>(`/brands/${brandId}/competitors`, { url, name });
+  refreshCompetitor = (id: number) => this.post<Competitor>(`/competitors/${id}/refresh`);
+  deleteCompetitor = (id: number) => this.delete(`/competitors/${id}`);
 }

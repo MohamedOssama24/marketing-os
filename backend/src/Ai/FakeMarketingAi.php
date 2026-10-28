@@ -88,6 +88,101 @@ final class FakeMarketingAi implements MarketingAi
         ];
     }
 
+    /** Senza AI l'audit si basa sui controlli automatici: problemi e servizi derivano da quelli non superati. */
+    public function prospectAudit(array $site, array $checks): array
+    {
+        $name = $site['site_name'] ?: self::nameFromTitle($site['title'], $site['host']);
+        $fixes = [
+            'https' => ['Il sito non è protetto', 'Chi visita il sito vede l\'avviso "non sicuro" e spesso se ne va prima di contattarvi.', 'Attivare un certificato HTTPS (spesso gratuito con il proprio hosting).', 'Manutenzione del sito'],
+            'title' => ['Titolo poco efficace su Google', 'Il titolo è la prima cosa che si legge nei risultati di ricerca: se è vago, si clicca su un concorrente.', 'Riscrivere il titolo con attività, città e punto di forza in 50-60 caratteri.', 'Ottimizzazione SEO di base'],
+            'description' => ['Manca una descrizione convincente', 'Google mostra un testo casuale preso dalla pagina invece di un invito a sceglierci.', 'Scrivere una descrizione di 140-160 caratteri con un invito all\'azione.', 'Ottimizzazione SEO di base'],
+            'socials' => ['Social non collegati al sito', 'Chi vi trova online non arriva ai profili social, dove si costruisce la fiducia giorno per giorno.', 'Collegare i profili dal sito e pubblicare con un calendario regolare.', 'Gestione dei social'],
+            'contacts' => ['Contatti difficili da trovare', 'Ogni passaggio in più per contattarvi fa perdere richieste.', 'Mettere telefono, WhatsApp ed email in evidenza in ogni pagina.', 'Revisione dei testi del sito'],
+            'content' => ['Testi troppo brevi', 'Con pochi contenuti Google e i clienti non capiscono bene cosa offrite e perché scegliervi.', 'Ampliare le pagine dei servizi con vantaggi, esempi e domande frequenti.', 'Revisione dei testi del sito'],
+            'blog' => ['Nessun blog o notizie', 'Senza contenuti aggiornati il sito non intercetta le ricerche dei clienti e i social non hanno materiale.', 'Pubblicare due articoli al mese sulle domande più frequenti dei clienti.', 'Contenuti per il blog'],
+            'brand' => ['Identità visiva poco chiara', 'Colori e logo coerenti rendono l\'attività riconoscibile su sito e social.', 'Definire un brand kit con colori, logo e stile delle immagini.', 'Brand kit e grafiche'],
+        ];
+        $issues = [];
+        $services = [];
+        foreach ($checks as $check) {
+            if ($check['ok'] || !isset($fixes[$check['key']])) continue;
+            [$title, $detail, $fix, $service] = $fixes[$check['key']];
+            $issues[] = ['title' => $title, 'detail' => $detail, 'fix' => $fix];
+            $services[$service] = true;
+        }
+        $services['Gestione dei social'] = true;
+        $descriptions = [
+            'Gestione dei social' => 'Calendario mensile di post con grafiche nei vostri colori, approvati da voi prima della pubblicazione.',
+            'Ottimizzazione SEO di base' => 'Titoli e descrizioni per Google su tutte le pagine principali.',
+            'Revisione dei testi del sito' => 'Testi chiari che spiegano cosa offrite e portano a contattarvi.',
+            'Contenuti per il blog' => 'Articoli utili che rispondono alle domande dei vostri clienti.',
+            'Brand kit e grafiche' => 'Colori, logo e modelli grafici coerenti per sito e social.',
+            'Manutenzione del sito' => 'Sicurezza, aggiornamenti e piccoli interventi sul sito.',
+        ];
+        $product = $site['menu'][0] ?? 'i vostri servizi';
+        return [
+            'name' => mb_substr($name, 0, 160),
+            'summary' => $site['description'] ?: "{$name} è presente online su {$site['host']}.",
+            'strengths' => array_values(array_map(fn($c) => "{$c['label']}: {$c['detail']}", array_filter($checks, fn($c) => $c['ok']))),
+            'issues' => $issues,
+            'post_ideas' => [
+                ['channel' => 'instagram', 'title' => 'Dietro le quinte', 'body' => "[Idea di esempio] Mostrate come nasce {$product}: chi ci lavora, i dettagli che fanno la differenza."],
+                ['channel' => 'facebook', 'title' => 'La domanda della settimana', 'body' => '[Idea di esempio] Rispondete a una domanda frequente dei clienti con un consiglio pratico.'],
+                ['channel' => 'linkedin', 'title' => 'Un risultato raccontato', 'body' => '[Idea di esempio] Raccontate un lavoro recente: il problema del cliente e come lo avete risolto.'],
+            ],
+            'services' => array_map(fn($s) => ['name' => $s, 'description' => $descriptions[$s]], array_keys($services)),
+            'pitch' => "Questi sono i primi spunti che abbiamo notato sul sito di {$name}. Ci farebbe piacere approfondirli insieme in una breve chiamata conoscitiva, senza impegno.",
+        ];
+    }
+
+    public function repurposeContent(array $brand, array $item, array $formats): array
+    {
+        $text = preg_replace('/\n*---\nNote per il revisore:.*$/su', '', $item['body']);
+        return array_map(fn($format) => [
+            'format' => $format,
+            'title' => Repurpose::FORMATS[$format][2] . ' — ' . $item['title'],
+            'body' => "[Versione di esempio: generazione AI non attiva]\n\n" . match ($format) {
+                'carosello' => "Slide 1: {$item['title']}\nSlide 2: Il problema\nSlide 3: La soluzione\nSlide 4: Come funziona\nSlide 5: Scrivici\n\n{$text}",
+                'reel' => "Gancio (0-3 s): {$item['title']}\nScena 1: mostra il prodotto\nScena 2: il vantaggio principale\nChiusura: invito all'azione\n\n{$text}",
+                default => $text,
+            },
+            'call_to_action' => 'Scopri di più',
+            'hashtags' => in_array(Repurpose::FORMATS[$format][0], ['instagram', 'linkedin'], true) ? ['esempio'] : [],
+            'visual' => ['headline' => mb_substr($item['title'], 0, 60), 'subheadline' => '', 'badge' => '', 'layout' => $format === 'carosello' ? 'light' : 'bold'],
+            'reviewer_notes' => self::NOTE,
+        ], $formats);
+    }
+
+    public function reviewReplies(array $brand, array $review): array
+    {
+        $name = $review['author'] ? ' ' . trim($review['author']) : '';
+        $team = 'Il team di ' . ($brand['name'] ?? 'noi');
+        if ($review['rating'] >= 4) {
+            return [
+                "Grazie{$name} per la splendida recensione! Siamo felici che la vostra esperienza sia stata positiva: vi aspettiamo presto. {$team}",
+                "Che bello leggere queste parole{$name}! Il vostro apprezzamento è la soddisfazione più grande per tutto il team. A presto!",
+                "Grazie di cuore{$name}, a prestissimo!",
+            ];
+        }
+        return [
+            "Gentile{$name}, grazie per il suo riscontro. Ci dispiace che l'esperienza non sia stata all'altezza delle aspettative: ci contatti in privato, vorremmo capire meglio cosa è successo e rimediare. {$team}",
+            "Ciao{$name}, ci dispiace davvero leggere questa recensione. Ogni commento ci aiuta a migliorare: scrivici in privato così possiamo parlarne con calma. {$team}",
+            "Grazie{$name} per averci scritto. Ci dispiace: contattaci in privato, vogliamo rimediare.",
+        ];
+    }
+
+    public function competitorBrief(array $brand, array $site): array
+    {
+        $name = $site['site_name'] ?: self::nameFromTitle($site['title'], $site['host']);
+        return [
+            'summary' => ($site['description'] ?: "{$name} è presente online su {$site['host']}.") . ' [Analisi di esempio: generazione AI non attiva]',
+            'offers' => array_slice($site['menu'], 0, 6),
+            'messages' => array_slice($site['headings'], 0, 5),
+            'tone' => 'Da valutare: attiva l\'AI per un\'analisi del tono di voce.',
+            'opportunities' => ['Attiva ANTHROPIC_API_KEY per ricevere spunti su come differenziare il cliente.'],
+        ];
+    }
+
     private static function nameFromTitle(string $title, string $host): string
     {
         foreach (preg_split('/\s+[|\-–—:·•]\s+/u', $title) ?: [] as $part) {

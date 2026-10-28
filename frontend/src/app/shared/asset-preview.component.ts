@@ -1,6 +1,9 @@
-import { Component, Input, OnChanges, OnDestroy, inject, signal } from '@angular/core';
+import { Component, InjectionToken, Input, OnChanges, OnDestroy, inject, signal } from '@angular/core';
 import { ApiService } from '../core/api.service';
 import { Asset } from '../core/models';
+
+/** Nelle pagine pubbliche (portale del cliente) le immagini arrivano da un indirizzo pubblico invece che dalla libreria protetta. */
+export const PUBLIC_ASSET_URL = new InjectionToken<(assetId: number) => string>('PUBLIC_ASSET_URL');
 
 /** Anteprima di un file della libreria: il file è protetto da token, quindi viene scaricato come blob. */
 @Component({
@@ -37,11 +40,16 @@ export class AssetPreviewComponent implements OnChanges, OnDestroy {
   @Input() fit: 'cover' | 'contain' = 'cover';
 
   private api = inject(ApiService);
+  private publicUrl = inject(PUBLIC_ASSET_URL, { optional: true });
   url = signal<string | null>(null);
 
   ngOnChanges(): void {
     this.revoke();
     if (this.kind === 'document') return;
+    if (this.publicUrl) {
+      this.url.set(this.publicUrl(this.assetId));
+      return;
+    }
     this.api.assetBlob(this.assetId).subscribe({
       next: (blob) => this.url.set(URL.createObjectURL(blob)),
       error: () => this.url.set(null),
@@ -54,7 +62,7 @@ export class AssetPreviewComponent implements OnChanges, OnDestroy {
 
   private revoke(): void {
     const current = this.url();
-    if (current) URL.revokeObjectURL(current);
+    if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
     this.url.set(null);
   }
 }

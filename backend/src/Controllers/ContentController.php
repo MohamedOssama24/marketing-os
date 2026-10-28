@@ -4,7 +4,7 @@ declare(strict_types=1);
 final class ContentController
 {
     public const CHANNELS = MarketingAi::CHANNELS;
-    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, video_asset_id, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, published_at, published_url, created_at, updated_at';
+    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, video_asset_id, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, reviewed_via, scheduled_at, published_at, published_url, created_at, updated_at';
 
     public static function index(int $projectId): never
     {
@@ -256,6 +256,7 @@ final class ContentController
     {
         $user = Auth::userWithRole(Auth::MANAGERS);
         $note = Http::optionalString(self::optionalBody(), 'note', 1000);
+        if ($item = self::forStyle($id, $user['organization_id'])) StyleMemory::captureEdit($user['organization_id'], $item);
         self::transition($id, $user, ['in_review'], 'approved', $note);
     }
 
@@ -263,7 +264,29 @@ final class ContentController
     {
         $user = Auth::userWithRole(Auth::MANAGERS);
         $note = Http::requiredString(self::optionalBody(), 'note', 1000);
+        if ($item = self::forStyle($id, $user['organization_id'])) StyleMemory::captureFeedback($user['organization_id'], $item, $note);
         self::transition($id, $user, ['in_review'], 'rejected', $note);
+    }
+
+    /** Il contenuto in revisione con il testo originale dell'AI, per imparare dalle correzioni; null se non è in revisione. */
+    public static function forStyle(int $id, int $orgId): ?array
+    {
+        $item = Tenant::find('content_items', $id, $orgId, 'id, project_id, channel, body, ai_body, status');
+        return $item && $item['status'] === 'in_review' ? $item : null;
+    }
+
+    /** Trasforma il contenuto in altri formati (carosello, reel, newsletter…) come nuove bozze nella stessa campagna. */
+    public static function repurpose(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        self::find($id, $user);
+        $formats = Http::body()['formats'] ?? null;
+        if (!is_array($formats) || $formats === [] || count($formats) > 5 || array_diff($formats, array_keys(Repurpose::FORMATS))) {
+            Http::validationError('Scegli da 1 a 5 formati tra: ' . implode(', ', array_keys(Repurpose::FORMATS)) . '.');
+        }
+        $job = Jobs::enqueue($user, 'repurpose_content', ['content_id' => $id, 'formats' => array_values(array_unique($formats))]);
+        Audit::log($user, 'content.repurpose_requested', 'content_item', $id);
+        Http::json(['data' => $job], 202);
     }
 
     /** Avvia la generazione AI in background: risponde subito con il lavoro da seguire. */
@@ -295,7 +318,7 @@ final class ContentController
             Http::json(['error' => 'invalid_state', 'message' => "Operazione non consentita per un contenuto in stato '{$item['status']}'."], 409);
         }
         $isReview = in_array($to, ['approved', 'rejected'], true);
-        $stmt = Database::connection()->prepare('UPDATE content_items SET status=?, review_note=?, reviewed_by=?, reviewed_at=' . ($isReview ? 'UTC_TIMESTAMP()' : 'NULL') . ' WHERE id=? AND organization_id=?');
+        $stmt = Database::connection()->prepare('UPDATE content_items SET status=?, review_note=?, reviewed_by=?, reviewed_via=' . ($isReview ? "'app'" : 'NULL') . ', reviewed_at=' . ($isReview ? 'UTC_TIMESTAMP()' : 'NULL') . ' WHERE id=? AND organization_id=?');
         $stmt->execute([$to, $isReview ? $note : null, $isReview ? $user['id'] : null, $id, $user['organization_id']]);
         Audit::log($user, "content.{$to}", 'content_item', $id);
         Http::json(['data' => self::find($id, $user)]);

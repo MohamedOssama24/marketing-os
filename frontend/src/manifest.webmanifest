@@ -1,0 +1,20 @@
+{
+  "name": "Marketing OS",
+  "short_name": "Marketing OS",
+  "description": "Il marketing dei tuoi clienti in un unico posto: contenuti con l'AI, approvazioni, report e fatturazione.",
+  "lang": "it",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f6f9",
+  "theme_color": "#5b4bdb",
+  "icons": [
+    { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Approvazioni", "url": "/approvals" },
+    { "name": "Calendario", "url": "/calendar" },
+    { "name": "Segna ore", "url": "/profitability" }
+  ]
+}

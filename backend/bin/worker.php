@@ -12,8 +12,33 @@ function loadProject(array $job): array
     $orgId = (int)$job['organization_id'];
     $project = Tenant::find('projects', (int)$job['payload']['project_id'], $orgId, 'id, name, objective, target_audience, brand_profile_id');
     if (!$project) throw new GenerationException('Il progetto non esiste più.');
-    $brand = $project['brand_profile_id'] ? (Tenant::find('brand_profiles', (int)$project['brand_profile_id'], $orgId) ?? []) : [];
-    return [$project, $brand];
+    return [$project, loadBrand($orgId, $project['brand_profile_id'] ? (int)$project['brand_profile_id'] : null)];
+}
+
+/** Brand kit del cliente con gli esempi di stile appresi dalle correzioni passate. */
+function loadBrand(int $orgId, ?int $brandId): array
+{
+    $brand = $brandId ? (Tenant::find('brand_profiles', $brandId, $orgId) ?? []) : [];
+    if ($brand) $brand['style_examples'] = StyleMemory::forBrand($orgId, (int)$brand['id']);
+    return $brand;
+}
+
+/** Legge un sito per audit e concorrenti, con gli errori di lettura mostrati all'utente. */
+function readSite(string $url): array
+{
+    try {
+        return SiteReader::read($url);
+    } catch (SiteException $e) {
+        throw new GenerationException($e->getMessage());
+    }
+}
+
+/** Testi di una lista di stringhe dall'AI, puliti e accorciati. */
+function cleanList(mixed $list, int $max, int $length = 300): array
+{
+    if (!is_array($list)) return [];
+    $items = array_values(array_filter(array_map(fn($s) => is_scalar($s) ? mb_substr(trim((string)$s), 0, $length) : '', $list)));
+    return array_slice($items, 0, $max);
 }
 
 $handlers = [
@@ -58,6 +83,10 @@ $handlers = [
             $stmt = $pdo->prepare('INSERT INTO brand_profiles (organization_id, ' . implode(', ', array_keys($values)) . ') VALUES (?' . str_repeat(', ?', count($values)) . ')');
             $stmt->execute([$orgId, ...array_values($values)]);
             $brandId = (int)$pdo->lastInsertId();
+            // Cliente nato da un audit: il potenziale cliente resta collegato.
+            if (isset($job['payload']['prospect_id'])) {
+                $pdo->prepare('UPDATE prospects SET brand_profile_id=? WHERE id=? AND organization_id=?')->execute([$brandId, (int)$job['payload']['prospect_id'], $orgId]);
+            }
         }
 
         $logoId = $existing['logo_asset_id'] ?? null;
@@ -131,12 +160,12 @@ $handlers = [
         $item = ContentController::present($item);
         if (!in_array($item['status'], ['draft', 'rejected'], true)) throw new GenerationException('Il contenuto non è più modificabile.');
         $project = Tenant::find('projects', (int)$item['project_id'], $orgId, 'brand_profile_id');
-        $brand = $project && $project['brand_profile_id'] ? (Tenant::find('brand_profiles', (int)$project['brand_profile_id'], $orgId) ?? []) : [];
+        $brand = loadBrand($orgId, $project && $project['brand_profile_id'] ? (int)$project['brand_profile_id'] : null);
 
         $result = MarketingAis::make()->rewriteContent($brand, $item, $job['payload']['instruction']);
         // La foto scelta resta, anche se l'AI cambia testi e stile.
         $visual = ContentController::visual(($result['visual'] ?? []) + ['asset_id' => $item['visual']['asset_id'] ?? null], $orgId, false);
-        Database::connection()->prepare("UPDATE content_items SET title=?, body=?, visual=?, status='draft' WHERE id=? AND organization_id=?")->execute([
+        Database::connection()->prepare("UPDATE content_items SET title=?, body=?, ai_body=body, visual=?, status='draft' WHERE id=? AND organization_id=?")->execute([
             mb_substr(trim((string)($result['title'] ?? '')) ?: $item['title'], 0, 220),
             formatBody($result),
             $visual === null ? null : json_encode($visual, JSON_UNESCAPED_UNICODE),
@@ -160,7 +189,7 @@ $handlers = [
         // Le foto del cliente vanno a rotazione sui post con layout fotografico.
         $photos = $project['brand_profile_id'] ? AssetController::brandPhotoIds($orgId, (int)$project['brand_profile_id']) : [];
         $photoIndex = 0;
-        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, visual, scheduled_at, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
+        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, ai_body, visual, scheduled_at, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
         $ids = [];
         foreach ($plan['posts'] as $post) {
             $channel = in_array($post['channel'] ?? '', $payload['channels'], true) ? $post['channel'] : $payload['channels'][0];
@@ -174,7 +203,7 @@ $handlers = [
                 $orgId, $project['id'], $job['created_by'], $channel,
                 in_array($post['content_type'] ?? '', MarketingAi::CONTENT_TYPES, true) ? $post['content_type'] : 'post',
                 mb_substr(trim((string)($post['title'] ?? '')) ?: 'Senza titolo', 0, 220),
-                formatBody($post),
+                ...array_fill(0, 2, formatBody($post)), // testo e copia originale dell'AI
                 $visual === null ? null : json_encode($visual, JSON_UNESCAPED_UNICODE),
                 $when,
                 $job['id'],
@@ -192,7 +221,7 @@ $handlers = [
         $variants = MarketingAis::make()->contentVariants($brand, $project, $payload);
 
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, visual, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
+        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, ai_body, visual, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
         $ids = [];
         // Con una foto le varianti alternano "Foto" e "Foto e colore"; senza, colore pieno e chiaro.
         $assetId = $payload['asset_id'] ?? null;
@@ -206,7 +235,7 @@ $handlers = [
             $stmt->execute([
                 $orgId, $project['id'], $job['created_by'], $payload['channel'], $payload['content_type'],
                 $title,
-                formatBody($variant),
+                ...array_fill(0, 2, formatBody($variant)), // testo e copia originale dell'AI
                 json_encode($visual, JSON_UNESCAPED_UNICODE),
                 $job['id'],
             ]);
@@ -214,7 +243,124 @@ $handlers = [
         }
         return ['content_ids' => $ids];
     },
+
+    /** Audit gratuito del sito di un potenziale cliente: controlli automatici, analisi AI e proposta di servizi. */
+    'audit_prospect' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $prospect = Tenant::find('prospects', (int)$job['payload']['prospect_id'], $orgId, 'id, url')
+            ?? throw new GenerationException('Il potenziale cliente non esiste più.');
+        $site = readSite($prospect['url']);
+        $checks = SiteChecks::run($site);
+        $ai = MarketingAis::make()->prospectAudit($site, $checks);
+        $name = mb_substr(trim((string)($ai['name'] ?? '')) ?: $site['host'], 0, 160);
+        $audit = [
+            'name' => $name,
+            'summary' => mb_substr(trim((string)($ai['summary'] ?? '')), 0, 600),
+            'score' => SiteChecks::score($checks),
+            'checks' => $checks,
+            'strengths' => cleanList($ai['strengths'] ?? [], 5),
+            'issues' => cleanObjects($ai['issues'] ?? [], ['title', 'detail', 'fix'], 6),
+            'post_ideas' => cleanObjects($ai['post_ideas'] ?? [], ['channel', 'title', 'body'], 3, 1000),
+            'services' => cleanObjects($ai['services'] ?? [], ['name', 'description'], 5),
+            'pitch' => mb_substr(trim((string)($ai['pitch'] ?? '')), 0, 1500),
+            'colors' => array_slice($site['colors'], 0, 2),
+            'site_url' => $site['url'],
+            'analyzed_at' => date('Y-m-d H:i:s'),
+        ];
+        Database::connection()->prepare('UPDATE prospects SET name=COALESCE(name, ?), audit=? WHERE id=? AND organization_id=?')
+            ->execute([$name, json_encode($audit, JSON_UNESCAPED_UNICODE), $prospect['id'], $orgId]);
+        return ['prospect_id' => (int)$prospect['id']];
+    },
+
+    /** Un contenuto in altri formati: le nuove bozze vanno nella stessa campagna. */
+    'repurpose_content' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $item = Tenant::find('content_items', (int)$job['payload']['content_id'], $orgId, ContentController::COLUMNS)
+            ?? throw new GenerationException('Il contenuto non esiste più.');
+        $item = ContentController::present($item);
+        $project = Tenant::find('projects', (int)$item['project_id'], $orgId, 'brand_profile_id');
+        $brand = loadBrand($orgId, $project && $project['brand_profile_id'] ? (int)$project['brand_profile_id'] : null);
+        $formats = $job['payload']['formats'];
+        $results = MarketingAis::make()->repurposeContent($brand, $item, $formats);
+
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, ai_body, visual, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
+        $ids = [];
+        $done = [];
+        foreach ($results as $result) {
+            $format = $result['format'] ?? '';
+            if (!in_array($format, $formats, true) || isset($done[$format])) continue;
+            $done[$format] = true;
+            [$channel, $type] = Repurpose::FORMATS[$format];
+            $visual = ContentController::visual(($result['visual'] ?? []) + ['asset_id' => $item['visual']['asset_id'] ?? null], $orgId, false);
+            $stmt->execute([
+                $orgId, $item['project_id'], $job['created_by'], $channel, $type,
+                mb_substr(trim((string)($result['title'] ?? '')) ?: $item['title'], 0, 220),
+                ...array_fill(0, 2, formatBody($result)), // testo e copia originale dell'AI
+                $visual === null ? null : json_encode($visual, JSON_UNESCAPED_UNICODE),
+                $job['id'],
+            ]);
+            $ids[] = (int)$pdo->lastInsertId();
+        }
+        if (!$ids) throw new GenerationException('L\'AI non ha prodotto nessun formato. Riprova.');
+        return ['project_id' => (int)$item['project_id'], 'content_ids' => $ids];
+    },
+
+    /** Risposte proposte a una recensione: l'utente sceglie e salva quella che preferisce. */
+    'review_replies' => function (array $job): array {
+        $payload = $job['payload'];
+        $brand = loadBrand((int)$job['organization_id'], (int)$payload['brand_id']) ?: throw new GenerationException('Il cliente non esiste più.');
+        $replies = MarketingAis::make()->reviewReplies($brand, $payload);
+        return ['replies' => cleanList($replies, 3, 2000)];
+    },
+
+    /** Legge il sito di un concorrente e lo confronta con il brand kit del cliente. */
+    'analyze_competitor' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $competitor = Tenant::find('competitors', (int)$job['payload']['competitor_id'], $orgId, 'id, brand_profile_id, url')
+            ?? throw new GenerationException('Il concorrente non esiste più.');
+        $site = readSite($competitor['url']);
+        $brief = MarketingAis::make()->competitorBrief(loadBrand($orgId, (int)$competitor['brand_profile_id']), $site);
+        $analysis = [
+            'summary' => mb_substr(trim((string)($brief['summary'] ?? '')), 0, 800),
+            'offers' => cleanList($brief['offers'] ?? [], 6),
+            'messages' => cleanList($brief['messages'] ?? [], 5),
+            'tone' => mb_substr(trim((string)($brief['tone'] ?? '')), 0, 400),
+            'opportunities' => cleanList($brief['opportunities'] ?? [], 4, 500),
+            'socials' => $site['socials'],
+        ];
+        Database::connection()->prepare('UPDATE competitors SET analysis=?, last_checked_at=? WHERE id=? AND organization_id=?')
+            ->execute([json_encode($analysis, JSON_UNESCAPED_UNICODE), date('Y-m-d H:i:s'), $competitor['id'], $orgId]);
+        return ['competitor_id' => (int)$competitor['id']];
+    },
 ];
+
+/** Oggetti di una lista dall'AI con solo i campi attesi, scartando quelli senza il primo campo. */
+function cleanObjects(mixed $list, array $keys, int $max, int $length = 600): array
+{
+    if (!is_array($list)) return [];
+    $items = [];
+    foreach ($list as $entry) {
+        if (!is_array($entry)) continue;
+        $clean = [];
+        foreach ($keys as $key) $clean[$key] = is_scalar($entry[$key] ?? null) ? mb_substr(trim((string)$entry[$key]), 0, $length) : '';
+        if ($clean[$keys[0]] !== '') $items[] = $clean;
+    }
+    return array_slice($items, 0, $max);
+}
+
+/** Ogni settimana rianalizza i concorrenti già analizzati, così l'agenzia vede se cambiano offerte e messaggi. */
+function refreshCompetitors(): void
+{
+    $pdo = Database::connection();
+    $stale = $pdo->prepare("SELECT c.id, c.organization_id, c.created_by FROM competitors c LEFT JOIN jobs j ON j.id=c.job_id
+        WHERE c.last_checked_at < ? AND c.created_by IS NOT NULL AND (j.id IS NULL OR j.status IN ('done','failed')) LIMIT 20");
+    $stale->execute([date('Y-m-d H:i:s', strtotime('-7 days'))]);
+    foreach ($stale->fetchAll() as $c) {
+        $job = Jobs::enqueue(['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']], 'analyze_competitor', ['competitor_id' => (int)$c['id']]);
+        $pdo->prepare('UPDATE competitors SET job_id=? WHERE id=?')->execute([$job['id'], $c['id']]);
+    }
+}
 
 /** Unisce testo, invito all'azione, hashtag e note per il revisore in un unico corpo modificabile. */
 function formatBody(array $variant): string
@@ -228,7 +374,16 @@ function formatBody(array $variant): string
 }
 
 echo "Worker avviato.\n";
+$nextRefresh = 0;
 while (true) {
+    if (time() >= $nextRefresh) {
+        try {
+            refreshCompetitors();
+        } catch (Throwable $e) {
+            error_log((string)$e);
+        }
+        $nextRefresh = time() + 3600;
+    }
     $job = Jobs::claim();
     if (!$job) { sleep(2); continue; }
     echo "Lavoro #{$job['id']} ({$job['type']})...\n";

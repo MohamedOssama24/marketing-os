@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { ApiService } from '../../core/api.service';
-import { CHANNEL_LABELS, CONTENT_STATUS_LABELS, CalendarItem, apiErrorMessage } from '../../core/models';
+import { CHANNEL_LABELS, CONTENT_STATUS_LABELS, CalendarItem, Occasion, apiErrorMessage } from '../../core/models';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
 import { DEFAULT_PRIMARY, mix, readableOnLight } from '../../shared/color';
 
@@ -43,6 +43,9 @@ function dayKey(date: Date): string {
         <div class="cal-day" [class.other]="!day.inMonth" [class.today]="day.key === todayKey" [class.drop]="dropKey() === day.key"
              (dragover)="allowDrop($event, day.key)" (dragleave)="dropKey.set(null)" (drop)="drop($event, day.key)">
           <span class="cal-num">{{ day.date.getDate() }}</span>
+          @for (o of day.occasions; track o.name) {
+            <span class="chip-occasion" [title]="o.name + ' — ' + o.idea"><i class="ti ti-confetti" aria-hidden="true"></i> {{ o.name }}</span>
+          }
           @for (item of day.items; track item.id) {
             <a class="chip-post" [routerLink]="['/campaigns', item.project_id]" [draggable]="auth.canEdit() && item.status !== 'published'"
                (dragstart)="dragStart($event, item)" [style.background]="tint(item.brand_color)" [style.color]="ink(item.brand_color)"
@@ -69,6 +72,8 @@ export class CalendarComponent implements OnInit {
 
   month = signal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   items = signal<CalendarItem[]>([]);
+  /** Festività e ricorrenze utili per i contenuti. */
+  occasions = signal<Occasion[]>([]);
   error = signal<string | null>(null);
   dropKey = signal<string | null>(null);
   private dragged: CalendarItem | null = null;
@@ -88,7 +93,11 @@ export class CalendarComponent implements OnInit {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
       const key = dayKey(date);
-      return { date, key, inMonth: date.getMonth() === month, items: this.items().filter((it) => it.scheduled_at.startsWith(key)) };
+      return {
+        date, key, inMonth: date.getMonth() === month,
+        items: this.items().filter((it) => it.scheduled_at.startsWith(key)),
+        occasions: this.occasions().filter((o) => o.date === key),
+      };
     });
   });
 
@@ -158,5 +167,6 @@ export class CalendarComponent implements OnInit {
       next: (list) => this.items.set(list),
       error: (err) => this.error.set(apiErrorMessage(err)),
     });
+    this.api.occasions(dayKey(start), dayKey(end)).subscribe({ next: (list) => this.occasions.set(list) });
   }
 }
