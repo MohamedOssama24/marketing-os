@@ -47,14 +47,17 @@ interface NetworkLink {
               <section class="step">
                 <span class="step-num">1</span>
                 <div class="step-body">
-                  <h3>Scarica la grafica</h3>
+                  <h3>{{ item.video_asset_id ? 'Scarica la grafica o il video' : 'Scarica la grafica' }}</h3>
                   <div class="actions start">
                     <button class="btn ghost small" (click)="downloadPng()"><i class="ti ti-download" aria-hidden="true"></i> Scarica PNG</button>
+                    @if (item.video_asset_id) {
+                      <button class="btn ghost small" (click)="downloadVideo()"><i class="ti ti-movie" aria-hidden="true"></i> Scarica video MP4</button>
+                    }
                     @if (canShareFiles) {
                       <button class="btn ghost small" (click)="share()"><i class="ti ti-share" aria-hidden="true"></i> Condividi…</button>
                     }
                   </div>
-                  @if (canShareFiles) { <p class="muted small">Dal telefono "Condividi" apre direttamente Instagram, Facebook o WhatsApp con la grafica (il testo viene copiato).</p> }
+                  @if (canShareFiles) { <p class="muted small">Dal telefono "Condividi" apre direttamente Instagram, Facebook o WhatsApp con {{ item.video_asset_id ? 'il video' : 'la grafica' }} (il testo viene copiato).</p> }
                 </div>
               </section>
               <section class="step">
@@ -174,13 +177,32 @@ export class PublishDialogComponent implements OnInit {
     this.visualRef?.exportPng(this.fileName()).catch(() => this.error.set('Impossibile esportare la grafica.'));
   }
 
-  /** Condivisione nativa (telefono): grafica come file; il testo va negli appunti perché Instagram lo ignora. */
+  downloadVideo(): void {
+    if (!this.item.video_asset_id) return;
+    this.api.assetBlob(this.item.video_asset_id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${this.fileName()}.mp4`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      error: () => this.error.set('Impossibile scaricare il video.'),
+    });
+  }
+
+  /**
+   * Condivisione nativa (telefono): il video se c'è, altrimenti la grafica.
+   * Il testo va negli appunti perché Instagram lo ignora.
+   */
   async share(): Promise<void> {
     try {
-      const dataUrl = await this.visualRef!.renderPng();
-      const blob = await (await fetch(dataUrl)).blob();
+      const file = this.item.video_asset_id
+        ? new File([await firstValueFrom(this.api.assetBlob(this.item.video_asset_id))], `${this.fileName()}.mp4`, { type: 'video/mp4' })
+        : new File([await (await fetch(await this.visualRef!.renderPng())).blob()], `${this.fileName()}.png`, { type: 'image/png' });
       await navigator.clipboard?.writeText(this.caption).catch(() => undefined);
-      await navigator.share({ files: [new File([blob], `${this.fileName()}.png`, { type: 'image/png' })], text: this.caption });
+      await navigator.share({ files: [file], text: this.caption });
     } catch (err) {
       if ((err as DOMException)?.name !== 'AbortError') this.error.set('Condivisione non riuscita: scarica la grafica e copia il testo.');
     }

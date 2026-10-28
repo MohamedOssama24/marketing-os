@@ -290,6 +290,13 @@ legend { font-weight: 500; font-size: 0.86rem; margin-bottom: 6px; }
   .publish-preview { max-width: 320px; margin: 0 auto; }
 }
 
+/* Video Studio */
+.media-switch { display: flex; gap: 4px; padding: 6px 8px 8px;
+  button { flex: 1; font: inherit; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    border-radius: 8px; padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    &.on { border-color: var(--primary); color: var(--primary-ink); background: var(--primary-soft); } } }
+.video-frame { background: #000; display: flex; justify-content: center; video { max-height: 560px; } }
+
 /* Foto del post: trascinamento e selettore */
 .visual-drop { position: relative; &.dragging { outline: 3px dashed var(--primary); outline-offset: -3px; } }
 .visual-overlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 8px;

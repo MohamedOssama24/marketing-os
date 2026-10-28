@@ -139,6 +139,16 @@ Stili grafici (`visual.layout`): `bold` colore pieno, `light` chiaro, `photo` fo
 
 `POST /projects/{id}/generate` accetta anche `asset_id`: un'immagine della libreria da usare nella grafica di tutte le varianti (stili `photo` e `split` alternati).
 
+## Video Studio
+
+`POST /content/{id}/video` (editor+) — `{ "format": "story" | "square", "music_asset_id": 12 }` (musica facoltativa). Avvia il lavoro `render_video` e risponde `202`. Il video si costruisce dal post senza AI e senza costi: apertura con logo e titolo della grafica, una scena per ogni frase chiave (con zoom lento sulla foto del post o del cliente e la frase come sottotitolo), chiusura con invito all'azione e sito. Montaggio con FFmpeg nel worker, testi con il font del brand (scaricato da Google Fonts) o Inter.
+
+A lavoro finito il post ha `video_asset_id` (MP4 H.264 1080×1920 o 1080×1080, audio AAC) e `result` contiene `asset_id`, `scenes` e `seconds` (tempo di montaggio). Un post pubblicato non si modifica.
+
+La libreria accetta anche musica (`kind: "audio"`): MP3, M4A, WAV, OGG. Usa solo brani di cui hai i diritti (ad esempio con licenza libera per uso commerciale).
+
+Prova del montaggio senza database: `docker compose exec worker php tests/video_render_check.php story /tmp`.
+
 ## Pubblicazione
 
 La pubblicazione sui social avviene fuori dall'app con il kit di pubblicazione (grafica, testo, link ai profili, newsletter HTML). L'app tiene traccia di cosa è uscito.

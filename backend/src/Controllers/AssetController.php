@@ -15,6 +15,13 @@ final class AssetController
         'video/quicktime' => ['video', 'mov'],
         'video/webm' => ['video', 'webm'],
         'application/pdf' => ['document', 'pdf'],
+        // Musica per i video: il MIME viene riconosciuto dal contenuto, come per le immagini.
+        'audio/mpeg' => ['audio', 'mp3'],
+        'audio/mp4' => ['audio', 'm4a'],
+        'audio/x-m4a' => ['audio', 'm4a'],
+        'audio/wav' => ['audio', 'wav'],
+        'audio/x-wav' => ['audio', 'wav'],
+        'audio/ogg' => ['audio', 'ogg'],
     ];
 
     /** Elenco dei file; con ?brand_id=N solo quelli del cliente indicato. */
@@ -62,7 +69,7 @@ final class AssetController
         $maxBytes = max(1, (int)(getenv('UPLOAD_MAX_MB') ?: 20)) * 1024 * 1024;
         if ($file['size'] > $maxBytes) Http::validationError('Il file supera la dimensione massima consentita.');
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: '';
-        if (!isset(self::ALLOWED[$mime])) Http::validationError('Formato non supportato. Usa PNG, JPG, WEBP, GIF, MP4, MOV, WEBM o PDF.');
+        if (!isset(self::ALLOWED[$mime])) Http::validationError('Formato non supportato. Usa PNG, JPG, WEBP, GIF, MP4, MOV, WEBM, PDF, MP3, M4A, WAV o OGG.');
         [$kind, $extension] = self::ALLOWED[$mime];
         if ($imagesOnly && $kind !== 'image') Http::validationError('Per la grafica del post serve un\'immagine (PNG, JPG, WEBP o GIF).');
 
@@ -83,6 +90,27 @@ final class AssetController
         [$relative, $target] = self::newPath($organizationId, self::ALLOWED[$mime][1]);
         if (file_put_contents($target, $bytes) === false) throw new RuntimeException('Impossibile salvare il file.');
         return self::insert($organizationId, $userId, 'image', mb_substr($originalName, 0, 255), $mime, strlen($bytes), $relative, $brandId);
+    }
+
+    /** Sposta nella libreria un file creato sul server (ad esempio un video montato dal worker). */
+    public static function saveLocalFile(int $organizationId, ?int $userId, string $path, string $originalName, ?int $brandId = null): int
+    {
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($path) ?: '';
+        if (!isset(self::ALLOWED[$mime])) throw new RuntimeException("Tipo di file non ammesso: {$mime}");
+        [$kind, $extension] = self::ALLOWED[$mime];
+        [$relative, $target] = self::newPath($organizationId, $extension);
+        // rename non funziona tra dischi diversi (ad esempio da /tmp al volume dei file): in quel caso si copia.
+        if (!@rename($path, $target) && !(copy($path, $target) && unlink($path))) throw new RuntimeException('Impossibile salvare il file.');
+        return self::insert($organizationId, $userId, $kind, mb_substr($originalName, 0, 255), $mime, (int)filesize($target), $relative, $brandId);
+    }
+
+    /** Percorso sul disco di un file dell'organizzazione, oppure null se non esiste o non appartiene all'organizzazione. */
+    public static function localPath(int $assetId, int $organizationId, ?string $kind = null): ?string
+    {
+        $asset = Tenant::find('assets', $assetId, $organizationId, 'kind, storage_path');
+        if (!$asset || ($kind !== null && $asset['kind'] !== $kind)) return null;
+        $path = self::storageRoot() . '/' . $asset['storage_path'];
+        return is_file($path) ? $path : null;
     }
 
     /** @return array{0: string, 1: string} percorso relativo e assoluto di un nuovo file */

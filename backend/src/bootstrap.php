@@ -17,4 +17,7 @@ require_once __DIR__ . '/Ai/FakeMarketingAi.php';
 require_once __DIR__ . '/Ai/ClaudeMarketingAi.php';
 require_once __DIR__ . '/Site/SafeHttp.php';
 require_once __DIR__ . '/Site/SiteReader.php';
+require_once __DIR__ . '/Video/FontProvider.php';
+require_once __DIR__ . '/Video/VideoStoryboard.php';
+require_once __DIR__ . '/Video/VideoRenderer.php';
 foreach (glob(__DIR__ . '/Controllers/*.php') ?: [] as $controller) require_once $controller;

@@ -227,6 +227,36 @@ $variantsWithPhoto = array_filter($variantIds, function ($id) use ($a, $photoAss
 check('Le varianti usano la foto scelta', count($variantIds) === 2 && count($variantsWithPhoto) === 2, json_encode($variantResult));
 expectStatus('Varianti con una foto di B rifiutate', req('POST', "/projects/{$campaignId}/generate", $a['token'], ['channel' => 'instagram', 'brief' => 'X', 'asset_id' => $assetB['id']]), 422);
 
+echo "\nVideo Studio\n";
+// WAV di un secondo di silenzio, per provare le tracce audio senza file esterni.
+$wavPath = sys_get_temp_dir() . '/m1-musica.wav';
+$pcm = str_repeat("\0\0", 8000);
+file_put_contents($wavPath, 'RIFF' . pack('V', 36 + strlen($pcm)) . 'WAVEfmt ' . pack('VvvVVvv', 16, 1, 1, 8000, 16000, 2, 16) . 'data' . pack('V', strlen($pcm)) . $pcm);
+$music = req('POST', '/assets', $a['token'], null, ['file' => new CURLFile($wavPath, 'audio/wav', 'musica.wav'), 'brand_profile_id' => (string)$brandA['id']]);
+check('Traccia audio caricata nella libreria', $music[0] === 201 && ($music[1]['data']['kind'] ?? '') === 'audio', $music[2]);
+$musicId = $music[1]['data']['id'] ?? 0;
+expectStatus('B non crea video dai post di A', req('POST', "/content/{$photoPost['id']}/video", $b['token'], ['format' => 'square']), 404);
+expectStatus('Il cliente non crea video', req('POST', "/content/{$photoPost['id']}/video", $viewer, ['format' => 'square']), 403);
+expectStatus('Formato video non valido rifiutato', req('POST', "/content/{$photoPost['id']}/video", $a['token'], ['format' => 'cinema']), 422);
+expectStatus('Una foto non vale come musica', req('POST', "/content/{$photoPost['id']}/video", $a['token'], ['format' => 'square', 'music_asset_id' => $photoAsset]), 422);
+expectStatus('B non usa la musica di A', req('POST', "/content/{$photoPost['id']}/video", $b['token'], ['format' => 'square', 'music_asset_id' => $musicId]), 404);
+$videoJob = req('POST', "/content/{$photoPost['id']}/video", $a['token'], ['format' => 'square', 'music_asset_id' => $musicId]);
+expectStatus('A avvia il video (202)', $videoJob, 202);
+$videoResult = null;
+for ($i = 0; $i < 90; $i++) {
+    $videoResult = req('GET', "/jobs/" . ($videoJob[1]['data']['id'] ?? 0), $a['token'])[1]['data'] ?? null;
+    if (in_array($videoResult['status'] ?? '', ['done', 'failed'], true)) break;
+    sleep(1);
+}
+check('Video montato', ($videoResult['status'] ?? '') === 'done', json_encode($videoResult));
+$withVideo = req('GET', "/content/{$photoPost['id']}", $a['token'])[1]['data'] ?? [];
+$videoId = $withVideo['video_asset_id'] ?? null;
+check('Il post ha il video collegato', $videoId !== null && $videoId === ($videoResult['result']['asset_id'] ?? -1));
+$videoFile = req('GET', "/assets/{$videoId}/file", $a['token']);
+check('Il file è un MP4 scaricabile da A', $videoFile[0] === 200 && substr($videoFile[2], 4, 4) === 'ftyp');
+expectStatus('B non scarica il video di A', req('GET', "/assets/{$videoId}/file", $b['token']), 404);
+echo "  (montaggio: {$videoResult['result']['seconds']} s, {$videoResult['result']['scenes']} scene)\n";
+
 echo "\nPubblicazione\n";
 // Il post approvato con data di ieri deve comparire tra quelli da pubblicare.
 req('POST', "/content/{$approvedPost['id']}/schedule", $a['token'], ['scheduled_at' => date('Y-m-d', strtotime('-1 day')) . ' 18:30']);

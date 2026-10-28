@@ -2,6 +2,12 @@ FROM php:8.3-fpm-alpine
 RUN apk add --no-cache oniguruma oniguruma-dev \
     && docker-php-ext-install pdo pdo_mysql mbstring \
     && apk del oniguruma-dev
+# Video Studio: FFmpeg per il montaggio, font Inter (licenza OFL) e GD con FreeType per disegnare i testi delle scene.
+RUN apk add --no-cache ffmpeg font-inter freetype libpng libjpeg-turbo libwebp \
+    && apk add --no-cache --virtual .gd-build freetype-dev libpng-dev libjpeg-turbo-dev libwebp-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+    && docker-php-ext-install gd \
+    && apk del .gd-build
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/php.ini /usr/local/etc/php/conf.d/marketing-os.ini
 

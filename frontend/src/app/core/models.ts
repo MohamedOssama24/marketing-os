@@ -119,7 +119,7 @@ export type BrandInput = Partial<Omit<Brand, 'id' | 'created_at' | 'updated_at'>
 export interface Asset {
   id: number;
   brand_profile_id: number | null;
-  kind: 'image' | 'video' | 'document';
+  kind: 'image' | 'video' | 'document' | 'audio';
   original_name: string;
   mime_type: string;
   size_bytes: number;
@@ -159,6 +159,8 @@ export interface ContentItem {
   title: string;
   body: string;
   visual: Visual | null;
+  /** Video MP4 del post, se creato con il Video Studio */
+  video_asset_id: number | null;
   status: ContentStatus;
   ai_generated: number;
   job_id: number | null;

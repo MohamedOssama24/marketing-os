@@ -105,6 +105,9 @@ export class ApiService {
   contentItem = (id: number) => this.get<ContentItem>(`/content/${id}`);
   deleteContent = (id: number) => this.delete(`/content/${id}`);
   rewriteContent = (id: number, instruction: string) => this.post<Job>(`/content/${id}/rewrite`, { instruction });
+  /** Video del post montato in background; il lavoro restituisce l'id del file MP4. */
+  createVideo = (id: number, format: 'story' | 'square', musicAssetId: number | null) =>
+    this.post<Job>(`/content/${id}/video`, { format, music_asset_id: musicAssetId });
   publishContent = (id: number, url?: string | null) => this.post<ContentItem>(`/content/${id}/publish`, url ? { url } : {});
   unpublishContent = (id: number) => this.post<ContentItem>(`/content/${id}/unpublish`);
   /** Carica una foto personalizzata nella grafica del post (finisce anche nella libreria del cliente). */

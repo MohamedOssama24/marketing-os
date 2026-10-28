@@ -14,13 +14,13 @@ import { AssetPreviewComponent } from '../../shared/asset-preview.component';
     <div class="page-head">
       <div>
         <h1>Libreria file</h1>
-        <p class="muted">Loghi, foto prodotto e video dei clienti. Formati: PNG, JPG, WEBP, GIF, MP4, MOV, WEBM, PDF (max 20 MB).</p>
+        <p class="muted">Loghi, foto prodotto e video dei clienti. Formati: PNG, JPG, WEBP, GIF, MP4, MOV, WEBM, PDF e musica MP3, M4A, WAV, OGG (max 20 MB).</p>
       </div>
       @if (auth.canEdit()) {
         <label class="btn primary upload-btn">
           {{ uploading() ? 'Caricamento…' : '+ Carica file' }}
           <input type="file" multiple hidden [disabled]="uploading()" (change)="upload($event)"
-                 accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf" />
+                 accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg" />
         </label>
       }
     </div>

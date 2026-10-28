@@ -78,6 +78,40 @@ $handlers = [
         return ['brand_id' => $brandId, 'site_colors' => $site['colors'], 'logo_found' => $logoId !== null, 'photos_imported' => $photos];
     },
 
+    /** Video del post: storyboard dal testo, foto del cliente, montaggio con FFmpeg. Nessun servizio a pagamento. */
+    'render_video' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $payload = $job['payload'];
+        $item = Tenant::find('content_items', (int)$payload['content_id'], $orgId, ContentController::COLUMNS)
+            ?? throw new GenerationException('Il contenuto non esiste più.');
+        $item = ContentController::present($item);
+        $project = Tenant::find('projects', (int)$item['project_id'], $orgId, 'brand_profile_id');
+        $brand = $project && $project['brand_profile_id'] ? (Tenant::find('brand_profiles', (int)$project['brand_profile_id'], $orgId) ?? []) : [];
+        $brandId = $brand ? (int)$brand['id'] : null;
+
+        // Prima la foto del post, poi le altre foto del cliente.
+        $photoIds = array_values(array_unique(array_filter([
+            $item['visual']['asset_id'] ?? null,
+            ...($brandId ? AssetController::brandPhotoIds($orgId, $brandId) : []),
+        ])));
+        $photos = array_values(array_filter(array_map(fn($id) => AssetController::localPath((int)$id, $orgId, 'image'), $photoIds)));
+        $logo = !empty($brand['logo_asset_id']) ? AssetController::localPath((int)$brand['logo_asset_id'], $orgId, 'image') : null;
+        $music = $payload['music_asset_id'] ? AssetController::localPath((int)$payload['music_asset_id'], $orgId, 'audio') : null;
+
+        $scenes = VideoStoryboard::fromPost($item, $brand, $photos);
+        $output = sys_get_temp_dir() . '/video-' . bin2hex(random_bytes(6)) . '.mp4';
+        $started = microtime(true);
+        try {
+            VideoRenderer::render($scenes, $brand, $payload['format'], $logo, $music, $output);
+            $name = preg_replace('/[^a-z0-9]+/', '-', mb_strtolower(($brand['name'] ?? 'video') . '-' . $item['id'])) . '-' . $payload['format'] . '.mp4';
+            $assetId = AssetController::saveLocalFile($orgId, (int)$job['created_by'], $output, $name, $brandId);
+        } finally {
+            @unlink($output);
+        }
+        Database::connection()->prepare('UPDATE content_items SET video_asset_id=? WHERE id=? AND organization_id=?')->execute([$assetId, $item['id'], $orgId]);
+        return ['content_id' => (int)$item['id'], 'asset_id' => $assetId, 'scenes' => count($scenes), 'seconds' => round(microtime(true) - $started, 1)];
+    },
+
     'suggest_goals' => function (array $job): array {
         $brand = Tenant::find('brand_profiles', (int)$job['payload']['brand_id'], (int)$job['organization_id'])
             ?? throw new GenerationException('Il cliente non esiste più.');

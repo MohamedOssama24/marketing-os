@@ -38,7 +38,18 @@ export const CHANNEL_ICONS: Record<string, string> = {
           <span class="channel"><i class="ti" [class]="'ti ' + channelIcon()" aria-hidden="true"></i>{{ channelLabels[item.channel] }}</span>
         </header>
 
-        <div class="visual-drop" [class.dragging]="dragging()" (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)">
+        @if (item.video_asset_id && !editing()) {
+          <div class="media-switch" role="tablist">
+            <button role="tab" [class.on]="!showVideo()" (click)="showVideo.set(false)"><i class="ti ti-photo" aria-hidden="true"></i> Grafica</button>
+            <button role="tab" [class.on]="showVideo()" (click)="showVideo.set(true)"><i class="ti ti-movie" aria-hidden="true"></i> Video</button>
+          </div>
+        }
+        @if (showVideo() && item.video_asset_id && !editing()) {
+          <div class="video-frame"><app-asset-preview [assetId]="item.video_asset_id" kind="video" fit="contain" /></div>
+        }
+        <!-- La grafica resta nel DOM anche quando si guarda il video: serve per l'export PNG. -->
+        <div class="visual-drop" [hidden]="showVideo() && item.video_asset_id && !editing()" [class.dragging]="dragging()"
+             (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)">
           <app-post-visual #visualRef [visual]="editing() ? draftVisual : item.visual" [brand]="brand" [format]="format()"
                            [photoClickable]="canUploadPhoto()" (photoRequested)="photoInput.click()" />
           @if (dragging()) { <div class="visual-overlay"><i class="ti ti-upload" aria-hidden="true"></i> Rilascia la foto qui</div> }
@@ -128,10 +139,40 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <div class="actions"><button class="btn ghost small" (click)="rewriting.set(false)">Annulla</button></div>
           }
         </div>
+      } @else if (makingVideo()) {
+        <div class="edit-panel rewrite-panel">
+          @if (videoBusy()) {
+            <p class="rewrite-progress"><span class="spinner"></span> Monto il video… di solito 10-20 secondi.</p>
+          } @else {
+            <p class="small muted">Il video usa il testo del post, la sua foto, le foto del cliente, il logo e i colori del brand.</p>
+            <div class="field-label">Formato</div>
+            <div class="quick-picks">
+              <button class="chip" [class.active]="videoFormat === 'story'" (click)="videoFormat = 'story'"><i class="ti ti-device-mobile" aria-hidden="true"></i> Verticale 9:16 · Reels, TikTok</button>
+              <button class="chip" [class.active]="videoFormat === 'square'" (click)="videoFormat = 'square'"><i class="ti ti-square" aria-hidden="true"></i> Quadrato 1:1 · feed</button>
+            </div>
+            <label>Musica
+              <select [(ngModel)]="videoMusic">
+                <option [ngValue]="null">— Senza musica —</option>
+                @for (a of tracks; track a.id) { <option [ngValue]="a.id">{{ a.original_name }}</option> }
+              </select>
+            </label>
+            <button type="button" class="link-btn" (click)="musicInput.click()" [disabled]="uploadingMusic()">
+              @if (uploadingMusic()) { <span class="spinner small"></span> Carico… } @else { <i class="ti ti-upload" aria-hidden="true"></i> Carica una traccia (MP3, M4A, WAV, OGG) }
+            </button>
+            <input #musicInput type="file" hidden accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg" (change)="uploadMusic($event)" />
+            <div class="actions">
+              <button class="btn ghost small" (click)="makingVideo.set(false)">Annulla</button>
+              <button class="btn primary small" (click)="createVideo()"><i class="ti ti-movie" aria-hidden="true"></i> {{ item.video_asset_id ? 'Rifai il video' : 'Crea video' }}</button>
+            </div>
+          }
+        </div>
       } @else {
         <div class="post-actions">
           <button class="icon-btn" (click)="copy()" aria-label="Copia testo" title="Copia testo"><i class="ti" [class]="copied() ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button>
           <button class="icon-btn" (click)="download()" aria-label="Scarica grafica" title="Scarica grafica PNG"><i class="ti ti-download" aria-hidden="true"></i></button>
+          @if (auth.canEdit() && item.status !== 'published') {
+            <button class="icon-btn" (click)="makingVideo.set(true)" aria-label="Crea video" title="Crea un video da questo post"><i class="ti ti-movie" aria-hidden="true"></i></button>
+          }
           @if (canUploadPhoto()) {
             <button class="icon-btn" (click)="photoInput.click()" [disabled]="uploadingPhoto()" aria-label="Carica foto" title="Carica una foto per questo post"><i class="ti ti-photo-up" aria-hidden="true"></i></button>
           }
@@ -179,6 +220,13 @@ export class PostCardComponent {
 
   editing = signal(false);
   publishing = signal(false);
+  makingVideo = signal(false);
+  videoBusy = signal(false);
+  showVideo = signal(false);
+  uploadingMusic = signal(false);
+  videoFormat: 'story' | 'square' = 'story';
+  videoMusic: number | null = null;
+  private uploadedTracks: Asset[] = [];
   rejecting = signal(false);
   rewriting = signal(false);
   rewriteBusy = signal(false);
@@ -202,6 +250,62 @@ export class PostCardComponent {
     const known = new Set(this.uploadedHere.map((a) => a.id));
     const images = this.assets.filter((a) => a.kind === 'image' && a.id !== this.brand?.logo_asset_id && !known.has(a.id));
     return [...this.uploadedHere, ...images.filter((a) => a.brand_profile_id === this.brand?.id), ...images.filter((a) => a.brand_profile_id !== this.brand?.id)];
+  }
+
+  /** Tracce musicali della libreria, con prima quelle caricate da qui. */
+  get tracks(): Asset[] {
+    const known = new Set(this.uploadedTracks.map((a) => a.id));
+    return [...this.uploadedTracks, ...this.assets.filter((a) => a.kind === 'audio' && !known.has(a.id))];
+  }
+
+  uploadMusic(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.uploadingMusic.set(true);
+    this.api.uploadAsset(file, this.brand?.id).subscribe({
+      next: (asset) => {
+        this.uploadingMusic.set(false);
+        if (asset.kind !== 'audio') {
+          this.error.set('Il file caricato non è una traccia audio.');
+          return;
+        }
+        this.uploadedTracks = [asset, ...this.uploadedTracks];
+        this.videoMusic = asset.id;
+      },
+      error: (err) => {
+        this.uploadingMusic.set(false);
+        this.error.set(apiErrorMessage(err));
+      },
+    });
+  }
+
+  createVideo(): void {
+    this.videoBusy.set(true);
+    this.error.set(null);
+    this.api
+      .createVideo(this.item.id, this.videoFormat, this.videoMusic)
+      .pipe(switchMap((job) => this.api.waitForJob(job.id)))
+      .subscribe({
+        next: (job) => {
+          if (job.status === 'failed') {
+            this.videoBusy.set(false);
+            this.error.set(job.error ?? 'Montaggio del video non riuscito.');
+            return;
+          }
+          this.api.contentItem(this.item.id).subscribe((updated) => {
+            this.videoBusy.set(false);
+            this.makingVideo.set(false);
+            this.showVideo.set(true);
+            this.changed.emit(updated);
+          });
+        },
+        error: (err) => {
+          this.videoBusy.set(false);
+          this.error.set(apiErrorMessage(err));
+        },
+      });
   }
 
   pickPhoto(assetId: number): void {

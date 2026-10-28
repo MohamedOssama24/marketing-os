@@ -4,7 +4,7 @@ declare(strict_types=1);
 final class ContentController
 {
     public const CHANNELS = MarketingAi::CHANNELS;
-    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, published_at, published_url, created_at, updated_at';
+    public const COLUMNS = 'id, project_id, channel, content_type, title, body, visual, video_asset_id, status, ai_generated, job_id, review_note, reviewed_by, reviewed_at, scheduled_at, published_at, published_url, created_at, updated_at';
 
     public static function index(int $projectId): never
     {
@@ -102,6 +102,27 @@ final class ContentController
         $stmt->execute([json_encode($visual, JSON_UNESCAPED_UNICODE), $status, $id, $user['organization_id']]);
         Audit::log($user, 'content.photo_uploaded', 'content_item', $id);
         Http::json(['data' => self::find($id, $user)]);
+    }
+
+    /**
+     * Crea il video del post (in background, con FFmpeg): scene dal testo, foto del cliente, logo e colori.
+     * Formati: story (9:16, Reels/TikTok/Shorts) o square (1:1). Musica facoltativa dalla libreria.
+     */
+    public static function createVideo(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if ($item['status'] === 'published') Http::json(['error' => 'invalid_state', 'message' => 'Il post è già pubblicato.'], 409);
+        $raw = file_get_contents('php://input') ?: '';
+        $data = trim($raw) === '' ? [] : Http::body();
+        $format = Http::oneOf($data, 'format', array_keys(VideoRenderer::FORMATS), 'story');
+        $musicId = Http::optionalInt($data, 'music_asset_id');
+        if ($musicId !== null && !AssetController::localPath($musicId, $user['organization_id'], 'audio')) {
+            Http::validationError('La musica deve essere una traccia audio della tua libreria.');
+        }
+        $job = Jobs::enqueue($user, 'render_video', ['content_id' => $id, 'format' => $format, 'music_asset_id' => $musicId]);
+        Audit::log($user, 'content.video_requested', 'content_item', $id);
+        Http::json(['data' => $job], 202);
     }
 
     /** Fa riscrivere il post all'AI seguendo un'istruzione. Solo bozze o contenuti rifiutati. */
