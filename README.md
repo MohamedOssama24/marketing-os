@@ -26,6 +26,18 @@ Starter locale per il progetto Marketing OS: API PHP 8.3, MySQL 8.4 e Nginx in D
 
 5. Registra il primo utente con `POST http://localhost:8088/api/v1/auth/register` usando il JSON descritto in `docs/API.md`.
 
+## Frontend (Angular 17)
+
+Con i container avviati, da questa cartella:
+
+```bash
+cd frontend
+npm install
+npx ng serve
+```
+
+Apri http://localhost:4200: login, registrazione e gestione dei progetti. L'indirizzo delle API è in `frontend/src/app/core/models.ts` (`API_URL`); l'origine `http://localhost:4200` deve coincidere con `CORS_ORIGIN` nel file `.env`.
+
 ## Esempi con curl
 
 ```bash
