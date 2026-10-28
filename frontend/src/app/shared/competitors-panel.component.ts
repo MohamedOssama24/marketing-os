@@ -1,23 +1,24 @@
-import { Component, DestroyRef, Input, OnChanges, inject, signal } from '@angular/core';
+import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { Competitor, apiErrorMessage } from '../core/models';
+import { Competitor, CompetitorStrength, Project, apiErrorMessage } from '../core/models';
 
-/** Nella scheda cliente: i concorrenti seguiti, con l'analisi del loro sito rifatta ogni settimana. */
+/** Nella scheda cliente: i concorrenti seguiti, con l'analisi del loro sito rifatta ogni settimana e i loro punti forti da battere. */
 @Component({
   selector: 'app-competitors-panel',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <section class="card growth-card competitors">
       <div class="strategy-head">
         <h2><i class="ti ti-binoculars" aria-hidden="true"></i> Concorrenti</h2>
       </div>
-      <p class="muted small">Indica fino a 5 concorrenti: l'AI legge il loro sito ogni settimana e ti dice cosa promettono e dove il cliente può distinguersi.</p>
+      <p class="muted small">Indica fino a 5 concorrenti: l'AI legge il loro sito ogni settimana e ti dice cosa promettono, cosa fanno bene e dove il cliente può distinguersi.</p>
       @if (error()) { <div class="alert">{{ error() }}</div> }
 
       @if (auth.canEdit() && list().length < 5) {
@@ -42,10 +43,42 @@ import { Competitor, apiErrorMessage } from '../core/models';
               <p class="rewrite-progress"><span class="spinner small"></span> Leggo il sito…</p>
             } @else {
               @if (c.analysis; as a) {
+                @if (a.score !== undefined) {
+                  <div class="competitor-look">
+                    <span [class]="'score-badge small ' + scoreClass(a.score)" title="Punteggio del sito su 100">{{ a.score }}</span>
+                    <span class="swatches">@for (color of a.colors ?? []; track color) { <span class="swatch" [style.background]="color" [title]="color"></span> }</span>
+                    @for (f of a.fonts ?? []; track f) { <span class="tag">{{ f }}</span> }
+                  </div>
+                }
                 <p class="small">{{ a.summary }}</p>
                 @if (a.offers.length) { <p class="kit-label">In vetrina</p><div class="pillars">@for (o of a.offers; track $index) { <span class="tag">{{ o }}</span> }</div> }
                 @if (a.messages.length) { <p class="kit-label">Cosa promette</p><ul class="small">@for (m of a.messages; track $index) { <li>{{ m }}</li> }</ul> }
                 @if (a.tone) { <p class="kit-label">Tono</p><p class="small">{{ a.tone }}</p> }
+                @if (a.strengths?.length) {
+                  <p class="kit-label"><i class="ti ti-trophy" aria-hidden="true"></i> Cosa fa bene e come fare meglio</p>
+                  @for (s of a.strengths; track $index) {
+                    <div class="strength">
+                      <strong class="small">{{ s.strength }}</strong>
+                      <p class="small"><i class="ti ti-arrow-right" aria-hidden="true"></i> {{ s.counter }}</p>
+                      @if (auth.canEdit()) {
+                        @if (created()?.key === c.id + '-' + $index) {
+                          <p class="small success-text"><i class="ti ti-check" aria-hidden="true"></i> Sto scrivendo il post: <a [routerLink]="['/campaigns', created()!.projectId]">apri la campagna</a></p>
+                        } @else if (!campaigns.length) {
+                          <p class="muted small">Crea una campagna per il cliente per trasformarlo in un post.</p>
+                        } @else if (picking() === c.id + '-' + $index) {
+                          <select (change)="createPost(c.id + '-' + $index, s, +$any($event.target).value)" aria-label="Campagna in cui creare il post">
+                            <option value="" selected disabled>In quale campagna?</option>
+                            @for (p of campaigns; track p.id) { <option [value]="p.id">{{ p.name }}</option> }
+                          </select>
+                        } @else {
+                          <button class="link-btn small" (click)="campaigns.length === 1 ? createPost(c.id + '-' + $index, s, campaigns[0].id) : picking.set(c.id + '-' + $index)" [disabled]="busy()">
+                            <i class="ti ti-sparkles" aria-hidden="true"></i> Crea il post per fare meglio
+                          </button>
+                        }
+                      }
+                    </div>
+                  }
+                }
                 @if (a.opportunities.length) {
                   <div class="opportunities"><p class="kit-label"><i class="ti ti-bulb" aria-hidden="true"></i> Come distinguersi</p><ul class="small">@for (o of a.opportunities; track $index) { <li>{{ o }}</li> }</ul></div>
                 }
@@ -65,6 +98,10 @@ import { Competitor, apiErrorMessage } from '../core/models';
 })
 export class CompetitorsPanelComponent implements OnChanges {
   @Input({ required: true }) brandId!: number;
+  /** Campagne del cliente in cui creare i post nati dai punti forti dei concorrenti. */
+  @Input() campaigns: Project[] = [];
+  /** Un'analisi è finita o un concorrente è stato tolto: il confronto può cambiare. */
+  @Output() changed = new EventEmitter<void>();
   private api = inject(ApiService);
   private destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
@@ -72,6 +109,8 @@ export class CompetitorsPanelComponent implements OnChanges {
   list = signal<Competitor[]>([]);
   busy = signal(false);
   error = signal<string | null>(null);
+  picking = signal<string | null>(null);
+  created = signal<{ key: string; projectId: number } | null>(null);
   url = '';
 
   ngOnChanges(): void {
@@ -107,7 +146,36 @@ export class CompetitorsPanelComponent implements OnChanges {
 
   remove(c: Competitor): void {
     if (!confirm(`Smettere di seguire ${c.name}?`)) return;
-    this.api.deleteCompetitor(c.id).subscribe({ next: () => this.list.update((list) => list.filter((x) => x.id !== c.id)), error: (err) => this.error.set(apiErrorMessage(err)) });
+    this.api.deleteCompetitor(c.id).subscribe({
+      next: () => {
+        this.list.update((list) => list.filter((x) => x.id !== c.id));
+        this.changed.emit();
+      },
+      error: (err) => this.error.set(apiErrorMessage(err)),
+    });
+  }
+
+  scoreClass(score: number): string {
+    return score >= 75 ? 'good' : score >= 50 ? 'mid' : 'low';
+  }
+
+  /** Scrive con l'AI un post del cliente che fa meglio di ciò che il concorrente fa bene. */
+  createPost(key: string, s: CompetitorStrength, projectId: number): void {
+    if (!projectId) return;
+    this.busy.set(true);
+    this.error.set(null);
+    const brief = `${s.post_idea}\nPunto di forza del cliente da far emergere: ${s.counter}\nNon citare concorrenti e non copiare i loro testi.`;
+    this.api.generate(projectId, { channel: 'instagram', content_type: 'post', brief: brief.slice(0, 2000), variants: 2 }).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.picking.set(null);
+        this.created.set({ key, projectId });
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(apiErrorMessage(err));
+      },
+    });
   }
 
   /** Aspetta la fine dell'analisi e ricarica il concorrente. */
@@ -116,6 +184,7 @@ export class CompetitorsPanelComponent implements OnChanges {
     this.api.waitForJob(c.job_id).pipe(switchMap(() => this.api.competitors(this.brandId)), takeUntilDestroyed(this.destroyRef)).subscribe((list) => {
       const fresh = list.find((x) => x.id === c.id);
       if (fresh) this.replace(fresh);
+      this.changed.emit();
     });
   }
 

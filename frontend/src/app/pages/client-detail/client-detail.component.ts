@@ -11,6 +11,7 @@ import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { BrandFormComponent } from '../../shared/brand-form.component';
 import { MetaAdsSetupComponent } from '../../shared/meta-ads-setup.component';
 import { CompetitorsPanelComponent } from '../../shared/competitors-panel.component';
+import { CompetitionStudyComponent } from '../../shared/competition-study.component';
 import { PortalPanelComponent } from '../../shared/portal-panel.component';
 import { StylePanelComponent } from '../../shared/style-panel.component';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
@@ -21,7 +22,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent, PortalPanelComponent, StylePanelComponent, CompetitorsPanelComponent],
+  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent, PortalPanelComponent, StylePanelComponent, CompetitorsPanelComponent, CompetitionStudyComponent],
   template: `
     <a routerLink="/clients" class="back"><i class="ti ti-arrow-left" aria-hidden="true"></i> Clienti</a>
 
@@ -200,7 +201,8 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
           <app-portal-panel [brandId]="b.id" />
           <app-style-panel [brandId]="b.id" />
         </div>
-        <app-competitors-panel [brandId]="b.id" />
+        <app-competitors-panel [brandId]="b.id" [campaigns]="campaigns()" (changed)="study.reload()" />
+        <app-competition-study #study [brand]="b" (brandChanged)="reloadBrand(b.id)" />
         <app-meta-ads-setup [brandId]="b.id" />
       }
     } @else if (error()) {
@@ -264,6 +266,11 @@ export class ClientDetailComponent implements OnInit {
     });
     this.api.projects().subscribe((list) => this.projects.set(list));
     this.loadPhotos(id);
+  }
+
+  /** Dopo che lo stile proposto è stato applicato o annullato. */
+  reloadBrand(id: number): void {
+    this.api.brand(id).subscribe((b) => this.brand.set(b));
   }
 
   /** Rilegge il sito e aggiorna brand kit, colori e foto. */

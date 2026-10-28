@@ -664,6 +664,43 @@ check('Link alla libreria inserzioni di Meta', str_contains($competitor[1]['data
 expectStatus('B non vede i concorrenti di A', req('GET', "/brands/{$brandA['id']}/competitors", $b['token']), 404);
 expectStatus('B non elimina il concorrente di A', req('DELETE', "/competitors/{$competitor[1]['data']['id']}", $b['token']), 404);
 
+echo "\nConfronto e proposta di stile\n";
+expectStatus('Senza analisi pronte niente confronto', req('POST', "/brands/{$brandA['id']}/competition", $editor), 422);
+// Analisi simulata: il sito di prova non è raggiungibile dal worker.
+$fakeSite = ['url' => 'https://rivale.example', 'title' => 'Rivale', 'description' => '', 'socials' => [], 'menu' => [], 'colors' => ['#1E40AF', '#2563EB'], 'fonts' => ['Montserrat'], 'logo_candidates' => ['x'],
+    'pages' => [['url' => 'https://rivale.example/blog', 'text' => str_repeat('Testo di prova. Telefono 085 1234567. ', 80)]]];
+$fakeChecks = SiteChecks::run($fakeSite);
+Database::connection()->prepare('UPDATE competitors SET analysis=? WHERE id=?')->execute([json_encode([
+    'summary' => 'Rivale', 'offers' => [], 'messages' => ['Qualità'], 'tone' => 'Formale', 'opportunities' => [], 'socials' => [],
+    'strengths' => [['strength' => 'Blog curato', 'counter' => 'Casi reali', 'post_idea' => 'Un caso reale']],
+    'checks' => $fakeChecks, 'score' => SiteChecks::score($fakeChecks), 'colors' => $fakeSite['colors'], 'fonts' => $fakeSite['fonts'],
+]), $competitor[1]['data']['id']]);
+check('Il concorrente ha i punti forti con lo spunto per un post', (req('GET', "/brands/{$brandA['id']}/competitors", $a['token'])[1]['data'][0]['analysis']['strengths'][0]['post_idea'] ?? '') === 'Un caso reale');
+expectStatus('Viewer non avvia il confronto', req('POST', "/brands/{$brandA['id']}/competition", $viewer), 403);
+expectStatus('B non avvia il confronto di A', req('POST', "/brands/{$brandA['id']}/competition", $b['token']), 404);
+expectStatus('B non vede il confronto di A', req('GET', "/brands/{$brandA['id']}/competition", $b['token']), 404);
+expectStatus('Senza confronto non si applica lo stile', req('POST', "/brands/{$brandA['id']}/competition/apply", $editor, []), 422);
+$study = req('POST', "/brands/{$brandA['id']}/competition", $editor);
+expectStatus('Confronto avviato (202)', $study, 202);
+check('Il confronto finisce', (waitJob((int)($study[1]['data']['job_id'] ?? 0), $editor)['status'] ?? '') === 'done');
+$study = req('GET', "/brands/{$brandA['id']}/competition", $a['token'])[1]['data'];
+check('Tabella con una riga per controllo', count($study['rows'] ?? []) === count($fakeChecks) && count($study['rows'][0]['competitors'] ?? []) === 1);
+check('Proposta con colori validi e diversi dal blu del concorrente', preg_match('/^#[0-9A-F]{6}$/', $study['proposal']['primary_color'] ?? '') === 1 && !in_array($study['proposal']['primary_color'], ['#1E40AF', '#2563EB'], true), json_encode($study['proposal'] ?? null));
+check('Proposta con un font diverso da quello del concorrente', ($study['proposal']['font_family'] ?? 'Montserrat') !== 'Montserrat');
+$before = req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data'];
+expectStatus('Viewer non applica lo stile', req('POST', "/brands/{$brandA['id']}/competition/apply", $viewer, []), 403);
+expectStatus('B non applica lo stile ad A', req('POST', "/brands/{$brandA['id']}/competition/apply", $b['token'], []), 404);
+expectStatus('Parte sconosciuta rifiutata', req('POST', "/brands/{$brandA['id']}/competition/apply", $editor, ['parts' => ['logo']]), 422);
+req('POST', "/brands/{$brandA['id']}/competition/apply", $editor, ['parts' => ['colors', 'font']]);
+$after = req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data'];
+check('Colori e font applicati al brand kit', $after['primary_color'] === $study['proposal']['primary_color'] && $after['font_family'] === $study['proposal']['font_family']);
+check('Il tono non applicato resta com\'era', $after['tone_of_voice'] === $before['tone_of_voice']);
+req('POST', "/brands/{$brandA['id']}/competition/apply", $editor, ['parts' => ['colors']]);
+req('POST', "/brands/{$brandA['id']}/competition/undo", $editor);
+$undone = req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data'];
+check('Annulla rimette lo stile di prima (anche dopo due applicazioni)', $undone['primary_color'] === $before['primary_color'] && $undone['font_family'] === $before['font_family'], json_encode([$before['primary_color'], $undone['primary_color']]));
+expectStatus('Niente da annullare due volte', req('POST', "/brands/{$brandA['id']}/competition/undo", $editor), 422);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

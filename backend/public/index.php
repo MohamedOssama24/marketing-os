@@ -169,6 +169,10 @@ $router->add('GET', '/api/v1/brands/{brandId}/competitors', [CompetitorControlle
 $router->add('POST', '/api/v1/brands/{brandId}/competitors', [CompetitorController::class, 'store']);
 $router->add('POST', '/api/v1/competitors/{id}/refresh', [CompetitorController::class, 'refresh']);
 $router->add('DELETE', '/api/v1/competitors/{id}', [CompetitorController::class, 'destroy']);
+$router->add('GET', '/api/v1/brands/{brandId}/competition', [CompetitionController::class, 'show']);
+$router->add('POST', '/api/v1/brands/{brandId}/competition', [CompetitionController::class, 'start']);
+$router->add('POST', '/api/v1/brands/{brandId}/competition/apply', [CompetitionController::class, 'apply']);
+$router->add('POST', '/api/v1/brands/{brandId}/competition/undo', [CompetitionController::class, 'undo']);
 
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);

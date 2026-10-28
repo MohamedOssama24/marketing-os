@@ -327,13 +327,71 @@ $handlers = [
             'messages' => cleanList($brief['messages'] ?? [], 5),
             'tone' => mb_substr(trim((string)($brief['tone'] ?? '')), 0, 400),
             'opportunities' => cleanList($brief['opportunities'] ?? [], 4, 500),
+            'strengths' => cleanObjects($brief['strengths'] ?? [], ['strength', 'counter', 'post_idea'], 4),
             'socials' => $site['socials'],
-        ];
+        ] + siteSnapshot($site);
         Database::connection()->prepare('UPDATE competitors SET analysis=?, last_checked_at=? WHERE id=? AND organization_id=?')
             ->execute([json_encode($analysis, JSON_UNESCAPED_UNICODE), date('Y-m-d H:i:s'), $competitor['id'], $orgId]);
         return ['competitor_id' => (int)$competitor['id']];
     },
+
+    /** Confronta il sito del cliente con quelli dei concorrenti e propone uno stile che lo distingue. */
+    'competition_study' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $brandId = (int)$job['payload']['brand_id'];
+        $brand = loadBrand($orgId, $brandId) ?: throw new GenerationException('Il cliente non esiste più.');
+        $stmt = Database::connection()->prepare('SELECT name, analysis FROM competitors WHERE organization_id=? AND brand_profile_id=? AND analysis IS NOT NULL ORDER BY id');
+        $stmt->execute([$orgId, $brandId]);
+        $competitors = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $a = json_decode($row['analysis'], true);
+            $competitors[] = ['name' => $row['name'], 'colors' => $a['colors'] ?? [], 'fonts' => $a['fonts'] ?? [], 'tone' => $a['tone'] ?? '', 'messages' => $a['messages'] ?? []];
+        }
+        if (!$competitors) throw new GenerationException('Aggiungi almeno un concorrente e aspetta che la sua analisi sia pronta.');
+
+        // Il sito del cliente serve al confronto; se non c'è o non si legge, si usano i colori del brand kit.
+        $client = null;
+        if (!empty($brand['website_url'])) {
+            try {
+                $client = siteSnapshot(SiteReader::read($brand['website_url']));
+            } catch (SiteException) {}
+        }
+        $clientLook = [
+            'colors' => array_values(array_filter([$brand['primary_color'] ?? null, $brand['secondary_color'] ?? null])) ?: ($client['colors'] ?? []),
+            'fonts' => array_values(array_filter([$brand['font_family'] ?? null])) ?: ($client['fonts'] ?? []),
+        ];
+
+        $result = MarketingAis::make()->styleProposal($brand, ['client' => $clientLook, 'competitors' => $competitors]);
+        $p = is_array($result['proposal'] ?? null) ? $result['proposal'] : [];
+        $taken = array_merge([], ...array_column($competitors, 'colors'));
+        $primary = Competition::hex($p['primary_color'] ?? null) ?? Competition::distinctColor($taken);
+        $proposal = [
+            'primary_color' => $primary,
+            'secondary_color' => Competition::hex($p['secondary_color'] ?? null) ?? Competition::distinctColor([...$taken, $primary]),
+            'font_family' => Competition::font($p['font_family'] ?? null) ?? Competition::distinctFont(array_merge([], ...array_column($competitors, 'fonts'))),
+            'photo_style' => mb_substr(trim((string)($p['photo_style'] ?? '')), 0, 500),
+            'tone_of_voice' => mb_substr(trim((string)($p['tone_of_voice'] ?? '')), 0, 500),
+            'formats' => cleanList($p['formats'] ?? [], 4),
+            'rationale' => mb_substr(trim((string)($p['rationale'] ?? '')), 0, 600),
+        ];
+        Database::connection()->prepare('UPDATE competition_studies SET client_site=?, market=?, gaps=?, proposal=?, updated_at=? WHERE organization_id=? AND brand_profile_id=?')
+            ->execute([
+                $client === null ? null : json_encode($client, JSON_UNESCAPED_UNICODE),
+                mb_substr(trim((string)($result['market'] ?? '')), 0, 800),
+                json_encode(cleanList($result['gaps'] ?? [], 4, 400), JSON_UNESCAPED_UNICODE),
+                json_encode($proposal, JSON_UNESCAPED_UNICODE),
+                date('Y-m-d H:i:s'), $orgId, $brandId,
+            ]);
+        return ['brand_id' => $brandId];
+    },
 ];
+
+/** Controlli oggettivi, punteggio, colori e caratteri di un sito: la base del confronto tra cliente e concorrenti. */
+function siteSnapshot(array $site): array
+{
+    $checks = SiteChecks::run($site);
+    return ['checks' => $checks, 'score' => SiteChecks::score($checks), 'colors' => array_slice($site['colors'], 0, 4), 'fonts' => $site['fonts'] ?? []];
+}
 
 /** Oggetti di una lista dall'AI con solo i campi attesi, scartando quelli senza il primo campo. */
 function cleanObjects(mixed $list, array $keys, int $max, int $length = 600): array

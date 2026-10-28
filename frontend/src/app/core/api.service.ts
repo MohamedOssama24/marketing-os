@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, Alert, ClientReport, ClientRequest, Competitor, Occasion, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -261,4 +261,8 @@ export class ApiService {
   addCompetitor = (brandId: number, url: string, name?: string | null) => this.post<Competitor>(`/brands/${brandId}/competitors`, { url, name });
   refreshCompetitor = (id: number) => this.post<Competitor>(`/competitors/${id}/refresh`);
   deleteCompetitor = (id: number) => this.delete(`/competitors/${id}`);
+  competition = (brandId: number) => this.get<CompetitionStudy>(`/brands/${brandId}/competition`);
+  startCompetition = (brandId: number) => this.post<CompetitionStudy>(`/brands/${brandId}/competition`);
+  applyStyle = (brandId: number, parts: StylePart[]) => this.post<CompetitionStudy>(`/brands/${brandId}/competition/apply`, { parts });
+  undoStyle = (brandId: number) => this.post<CompetitionStudy>(`/brands/${brandId}/competition/undo`);
 }

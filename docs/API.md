@@ -300,9 +300,16 @@ Pubblici, senza token (il frontend li apre da `/portal/{token}`), con un limite 
 
 Fino a 5 per cliente. Il worker legge il sito (protezione SSRF) e l'AI riassume offerte, messaggi, tono e come distinguersi; i concorrenti già analizzati si rianalizzano da soli ogni 7 giorni.
 
-- `GET /brands/{id}/competitors` — con `analysis`, `last_checked_at` e `ad_library_url` (Libreria inserzioni di Meta, che in UE mostra tutte le inserzioni attive).
+- `GET /brands/{id}/competitors` — con `analysis`, `last_checked_at` e `ad_library_url` (Libreria inserzioni di Meta, che in UE mostra tutte le inserzioni attive). `analysis` contiene anche `strengths` (`[{ strength, counter, post_idea }]`: cosa fa bene, come fare meglio e il brief per un post), `checks` e `score` (gli stessi controlli dell'audit), `colors` e `fonts` del sito.
 - `POST /brands/{id}/competitors` — owner, admin, editor. `{ "url", "name"? }`, risponde `202`.
 - `POST /competitors/{id}/refresh`, `DELETE /competitors/{id}`.
+
+### Confronto e proposta di stile
+
+- `GET /brands/{id}/competition` — `client` (punteggio, controlli, colori e font del sito del cliente; `null` se non letto), `competitors`, `rows` (per ogni controllo l'esito del cliente e di ogni concorrente), `wins`, `losses`, `market`, `gaps`, `proposal` (`primary_color`, `secondary_color`, `font_family`, `photo_style`, `tone_of_voice`, `formats`, `rationale`), `applied_at`, `analyzing`, `job_error`.
+- `POST /brands/{id}/competition` — owner, admin, editor. Avvia il confronto (`202`); serve almeno un concorrente analizzato. Colori e font proposti sono sempre validi: se l'AI ne dà di non validi, si usano quelli più lontani dai concorrenti.
+- `POST /brands/{id}/competition/apply` — `{ "parts": ["colors", "font", "tone"] }`: copia nel brand kit le parti scelte, ricordando i valori di prima.
+- `POST /brands/{id}/competition/undo` — rimette i valori di prima dell'applicazione.
 
 ## Fatturazione
 

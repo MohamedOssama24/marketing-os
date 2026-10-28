@@ -15,7 +15,8 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Portale del cliente**: un link senza account dove il cliente approva i post o chiede modifiche, vede cosa uscirà, apre i report e manda richieste.
 - **Ore e redditività**: timer e ore per cliente, costo orario dell'agenzia, margine e guadagno orario reale di ogni cliente.
 - **Recensioni**: l'AI propone tre risposte nel tono del cliente a recensioni di Google, Facebook, TripAdvisor.
-- **Concorrenti**: fino a 5 per cliente, rianalizzati ogni settimana, con spunti per distinguersi e il link alle loro inserzioni attive.
+- **Concorrenti**: fino a 5 per cliente, rianalizzati ogni settimana, con spunti per distinguersi e il link alle loro inserzioni attive. Per ognuno, cosa fa bene e come fare meglio, con un clic per far scrivere all'AI il post del cliente.
+- **Confronto e proposta di stile**: il sito del cliente accanto a quelli dei concorrenti (punteggio, colori, caratteri, controlli), dove vince e dove perde, e uno stile che lo distingue (colori, carattere, foto, tono, formati) con l'anteprima prima/dopo; si applica al brand kit con un clic e si può annullare.
 - **Ricorrenze e avvisi**: festività e date commerciali nel calendario; avvisi su approvazioni ferme, budget superati, settimane senza post, report non aperti, fatture scadute.
 - Ricerca rapida con Ctrl+K, tema scuro, app installabile sul telefono.
 - Team con ruoli, libreria file, isolamento tra organizzazioni.

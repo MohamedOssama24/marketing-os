@@ -702,7 +702,11 @@ export interface Competitor {
   id: number;
   name: string;
   url: string;
-  analysis: { summary: string; offers: string[]; messages: string[]; tone: string; opportunities: string[]; socials: Record<string, string> } | null;
+  analysis: {
+    summary: string; offers: string[]; messages: string[]; tone: string; opportunities: string[]; socials: Record<string, string>;
+    /** Assenti nelle analisi fatte prima del confronto: arrivano alla prossima rilettura. */
+    strengths?: CompetitorStrength[]; score?: number; colors?: string[]; fonts?: string[];
+  } | null;
   last_checked_at: string | null;
   created_at: string;
   job_status: JobStatus | null;
@@ -710,4 +714,42 @@ export interface Competitor {
   analyzing: boolean;
   ad_library_url: string;
   job_id: number | null;
+}
+
+/** Cosa fa bene un concorrente, come fare meglio e lo spunto per un post del cliente. */
+export interface CompetitorStrength {
+  strength: string;
+  counter: string;
+  post_idea: string;
+}
+
+export interface StyleProposal {
+  primary_color: string;
+  secondary_color: string;
+  font_family: string;
+  photo_style: string;
+  tone_of_voice: string;
+  formats: string[];
+  rationale: string;
+}
+
+export type StylePart = 'colors' | 'font' | 'tone';
+
+/** Confronto del cliente con i concorrenti e proposta di stile. */
+export interface CompetitionStudy {
+  client: { score: number; colors: string[]; fonts: string[] } | null;
+  competitors: { id: number; name: string; score: number; colors: string[]; fonts: string[] }[];
+  /** Per ogni controllo: esito del cliente (null se il suo sito non è stato letto) e di ogni concorrente, nello stesso ordine. */
+  rows: { key: string; label: string; client: boolean | null; competitors: (boolean | null)[] }[];
+  wins: string[];
+  losses: string[];
+  market: string | null;
+  gaps: string[];
+  proposal: StyleProposal | null;
+  previous_style: Partial<Record<'primary_color' | 'secondary_color' | 'font_family' | 'tone_of_voice', string | null>> | null;
+  applied_at: string | null;
+  updated_at: string | null;
+  job_id: number | null;
+  analyzing: boolean;
+  job_error: string | null;
 }

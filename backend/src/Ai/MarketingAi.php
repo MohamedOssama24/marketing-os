@@ -65,10 +65,17 @@ interface MarketingAi
     public function reviewReplies(array $brand, array $review): array;
 
     /**
-     * Cosa comunica un concorrente sul suo sito e quali spazi lascia al cliente.
-     * @return array{summary: string, offers: list<string>, messages: list<string>, tone: string, opportunities: list<string>}
+     * Cosa comunica un concorrente sul suo sito, cosa fa bene (e come fare meglio) e quali spazi lascia al cliente.
+     * @return array{summary: string, offers: list<string>, messages: list<string>, tone: string, opportunities: list<string>, strengths: list<array{strength: string, counter: string, post_idea: string}>}
      */
     public function competitorBrief(array $brand, array $site): array;
+
+    /**
+     * Uno stile per il cliente che lo distingue dai concorrenti: com'è il mercato, cosa nessuno fa e la proposta.
+     * @param array{client: array{colors: list<string>, fonts: list<string>}, competitors: list<array{name: string, colors: list<string>, fonts: list<string>, tone: string, messages: list<string>}>} $market
+     * @return array{market: string, gaps: list<string>, proposal: array{primary_color: string, secondary_color: string, font_family: string, photo_style: string, tone_of_voice: string, formats: list<string>, rationale: string}}
+     */
+    public function styleProposal(array $brand, array $market): array;
 }
 
 final class MarketingAis

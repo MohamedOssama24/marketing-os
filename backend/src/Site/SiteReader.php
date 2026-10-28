@@ -3,11 +3,13 @@ declare(strict_types=1);
 
 /**
  * Legge un sito e ne estrae ciò che serve al brand kit: testi puliti (senza menu e piè di pagina),
- * titoli, voci di menu, lingua, colori, logo e le foto più grandi dei contenuti.
+ * titoli, voci di menu, lingua, colori, caratteri, logo e le foto più grandi dei contenuti.
  */
 final class SiteReader
 {
     private const MAX_STYLESHEETS = 2;
+    /** Font generici, di sistema e di icone: non dicono nulla dello stile del marchio. */
+    private const NOT_BRAND_FONTS = '/^(inherit|initial|unset|serif|sans-serif|monospace|cursive|fantasy|system-ui|-apple-system|blinkmacsystemfont|segoe ui|roboto|helvetica|helvetica neue|arial|verdana|tahoma|times|times new roman|georgia|courier|courier new|ui-sans-serif|ui-serif|ui-monospace|dashicons|eicons|glyphicons|slick|revicons|themify|ionicons|icomoon|.*awesome.*|.*icon.*|.*star.*|swiper.*)$/i';
     /** Pagine interne da leggere, al massimo una per gruppo e due per i prodotti. */
     private const PAGE_GROUPS = [
         'about' => ['/chi-siamo|chisiamo|about|storia|azienda|company|who-we-are/i', 1],
@@ -26,7 +28,7 @@ final class SiteReader
     /**
      * @return array{url: string, host: string, language: string, title: string, description: string, site_name: string, tagline: string,
      *   keywords: string, headings: list<string>, menu: list<string>, pages: list<array{url: string, text: string}>,
-     *   colors: list<string>, logo_candidates: list<string>, image_candidates: list<string>,
+     *   colors: list<string>, fonts: list<string>, logo_candidates: list<string>, image_candidates: list<string>,
      *   socials: array{instagram_url?: string, facebook_url?: string, linkedin_url?: string}}
      */
     public static function read(string $inputUrl): array
@@ -56,7 +58,9 @@ final class SiteReader
         // Motto del sito: in molti temi (WordPress compreso) è la descrizione accanto al logo.
         $tagline = $meta('//*[contains(@class,"site-description") or contains(@class,"tagline") or contains(@class,"slogan")]');
 
-        $colors = self::colors(self::css($xpath, $baseUrl, $host), $meta('//meta[@name="theme-color"]/@content'));
+        $css = self::css($xpath, $baseUrl, $host);
+        $colors = self::colors($css, $meta('//meta[@name="theme-color"]/@content'));
+        $fonts = self::fonts($css, $xpath);
 
         $logoCandidates = [];
         foreach ($xpath->query('//img[contains(translate(concat(@src," ",@class," ",@id," ",@alt),"LOGO","logo"),"logo")]/@src') as $node) $logoCandidates[] = (string)$node->nodeValue;
@@ -114,6 +118,7 @@ final class SiteReader
             'menu' => array_slice(array_values($menu), 0, 40),
             'pages' => array_map(fn($p) => ['url' => $p['url'], 'text' => $p['text']], $pages),
             'colors' => $colors,
+            'fonts' => $fonts,
             'logo_candidates' => array_slice($logoCandidates, 0, 5),
             'image_candidates' => array_slice(array_values(array_unique(array_diff($images, $logoCandidates))), 0, 12),
             'socials' => $socials,
@@ -302,6 +307,26 @@ final class SiteReader
             array_unshift($colors, strtoupper($themeColor));
         }
         return array_slice(array_values(array_unique($colors)), 0, 6);
+    }
+
+    /** @return list<string> fino a 4 font: prima quelli caricati da Google Fonts, poi i più usati nel CSS */
+    private static function fonts(string $css, DOMXPath $xpath): array
+    {
+        $counts = [];
+        foreach ($xpath->query('//link[contains(@href,"fonts.googleapis.com")]/@href') as $node) {
+            preg_match_all('/family=([^&:]+)/', urldecode((string)$node->nodeValue), $families);
+            foreach ($families[1] as $family) {
+                foreach (explode('|', $family) as $name) $counts[trim(str_replace('+', ' ', $name))] = 1000;
+            }
+        }
+        preg_match_all('/font-family\s*:\s*([^;}{]+)/i', $css, $matches);
+        foreach ($matches[1] as $stack) {
+            $name = trim(explode(',', $stack)[0], " \t\n\"'");
+            $counts[$name] = ($counts[$name] ?? 0) + 1;
+        }
+        arsort($counts);
+        $fonts = array_filter(array_map('strval', array_keys($counts)), fn($f) => preg_match('/^[\p{L}0-9 ]{2,60}$/u', $f) && !preg_match(self::NOT_BRAND_FONTS, $f));
+        return array_slice(array_values($fonts), 0, 4);
     }
 
     private static function isNeutral(string $hex): bool

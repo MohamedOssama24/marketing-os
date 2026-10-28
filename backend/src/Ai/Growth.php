@@ -120,3 +120,104 @@ final class StyleMemory
         return $percent >= 97;
     }
 }
+
+/** Confronto tra il cliente e i suoi concorrenti, e scelte di stile che lo distinguono da loro. */
+final class Competition
+{
+    /** Colori professionali tra cui scegliere quello più lontano da quelli dei concorrenti. */
+    private const PALETTE = ['#1E40AF', '#0F766E', '#15803D', '#B45309', '#B91C1C', '#9D174D', '#6D28D9', '#0E7490', '#C2410C', '#334155', '#A16207', '#7C2D12'];
+    /** Font di Google Fonts leggibili e professionali, con un carattere diverso l'uno dall'altro. */
+    private const FONTS = ['Montserrat', 'Playfair Display', 'Poppins', 'DM Serif Display', 'Work Sans', 'Lora', 'Raleway', 'Space Grotesk', 'Nunito', 'Cormorant Garamond'];
+
+    /**
+     * Tabella dei controlli: per ogni voce chi la supera, poi dove il cliente vince (lui sì, la maggior parte dei concorrenti no) e dove perde.
+     * @param list<array{key: string, ok: bool, label: string, detail: string}>|null $client
+     * @param list<array{id: int, name: string, checks: list<array{key: string, ok: bool}>}> $competitors
+     */
+    public static function compare(?array $client, array $competitors): array
+    {
+        $rows = [];
+        $wins = [];
+        $losses = [];
+        $labels = $client ?? ($competitors[0]['checks'] ?? []);
+        foreach ($labels as $check) {
+            $key = $check['key'];
+            $others = [];
+            foreach ($competitors as $c) {
+                $match = array_values(array_filter($c['checks'], fn($x) => $x['key'] === $key))[0] ?? null;
+                $others[] = $match === null ? null : (bool)$match['ok'];
+            }
+            $clientOk = $client === null ? null : (bool)$check['ok'];
+            $passing = count(array_filter($others, fn($ok) => $ok === true));
+            $rows[] = ['key' => $key, 'label' => $check['label'], 'client' => $clientOk, 'competitors' => $others];
+            if ($clientOk === true && $passing * 2 < count($others)) $wins[] = $check['label'];
+            if ($clientOk === false && $passing > 0) {
+                $names = [];
+                foreach ($competitors as $i => $c) if ($others[$i] === true) $names[] = $c['name'];
+                $losses[] = $check['label'] . ': ce l\'ha ' . implode(', ', $names);
+            }
+        }
+        return ['rows' => $rows, 'wins' => $wins, 'losses' => $losses];
+    }
+
+    /** Il colore della tavolozza con la tinta più lontana da tutte quelle già usate dai concorrenti. */
+    public static function distinctColor(array $taken): string
+    {
+        $hues = array_filter(array_map([self::class, 'hue'], $taken), fn($h) => $h !== null);
+        if (!$hues) return self::PALETTE[0];
+        $best = self::PALETTE[0];
+        $bestDistance = -1;
+        foreach (self::PALETTE as $color) {
+            $distance = min(array_map(fn($h) => self::hueDistance((float)self::hue($color), $h), $hues));
+            if ($distance > $bestDistance) {
+                $best = $color;
+                $bestDistance = $distance;
+            }
+        }
+        return $best;
+    }
+
+    /** Un font che nessun concorrente usa. */
+    public static function distinctFont(array $taken): string
+    {
+        $taken = array_map('mb_strtolower', $taken);
+        foreach (self::FONTS as $font) {
+            if (!in_array(mb_strtolower($font), $taken, true)) return $font;
+        }
+        return self::FONTS[0];
+    }
+
+    /** Colore esadecimale #RRGGBB valido, altrimenti null. */
+    public static function hex(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^#[0-9a-f]{6}$/i', trim($value)) ? strtoupper(trim($value)) : null;
+    }
+
+    /** Nome di un font di Google Fonts (lettere, numeri e spazi), altrimenti null. */
+    public static function font(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^[A-Za-z0-9 ]{2,60}$/', trim($value)) ? trim($value) : null;
+    }
+
+    /** Tinta in gradi (0-360), null per i colori quasi grigi. */
+    public static function hue(string $hex): ?float
+    {
+        if (!self::hex($hex)) return null;
+        [$r, $g, $b] = array_map(fn($v) => $v / 255, sscanf($hex, '#%02x%02x%02x'));
+        $max = max($r, $g, $b);
+        $delta = $max - min($r, $g, $b);
+        if ($delta < 0.1) return null;
+        $hue = match ($max) {
+            $r => fmod(($g - $b) / $delta, 6),
+            $g => ($b - $r) / $delta + 2,
+            default => ($r - $g) / $delta + 4,
+        };
+        return fmod($hue * 60 + 360, 360);
+    }
+
+    private static function hueDistance(float $a, float $b): float
+    {
+        $d = abs($a - $b);
+        return min($d, 360 - $d);
+    }
+}

@@ -180,6 +180,31 @@ final class FakeMarketingAi implements MarketingAi
             'messages' => array_slice($site['headings'], 0, 5),
             'tone' => 'Da valutare: attiva l\'AI per un\'analisi del tono di voce.',
             'opportunities' => ['Attiva ANTHROPIC_API_KEY per ricevere spunti su come differenziare il cliente.'],
+            'strengths' => array_map(fn($heading) => [
+                'strength' => "Mette in evidenza «{$heading}»",
+                'counter' => 'Racconta la stessa cosa con un caso reale del cliente e una foto vera.',
+                'post_idea' => "Post che mostra come il cliente affronta «{$heading}», con un esempio concreto e un invito a scrivere.",
+            ], array_slice($site['headings'], 0, 2)),
+        ];
+    }
+
+    public function styleProposal(array $brand, array $market): array
+    {
+        $takenColors = array_merge([], ...array_column($market['competitors'], 'colors'));
+        $takenFonts = array_merge([], ...array_column($market['competitors'], 'fonts'));
+        $primary = Competition::distinctColor($takenColors);
+        return [
+            'market' => count($market['competitors']) . ' concorrenti analizzati. [Proposta di esempio: generazione AI non attiva]',
+            'gaps' => ['Foto vere del team e dei clienti', 'Un tono più diretto e caldo', 'Video brevi dietro le quinte'],
+            'proposal' => [
+                'primary_color' => $primary,
+                'secondary_color' => Competition::distinctColor([...$takenColors, $primary]),
+                'font_family' => Competition::distinctFont($takenFonts),
+                'photo_style' => 'Foto vere, luce naturale, persone al lavoro e clienti soddisfatti.',
+                'tone_of_voice' => 'Diretto e caldo, con il "tu"; frasi brevi e concrete.',
+                'formats' => ['Caroselli con consigli pratici', 'Reel dietro le quinte', 'Storie dei clienti'],
+                'rationale' => 'Colori e caratteri scelti tra quelli che nessun concorrente usa, così il cliente si riconosce subito nel feed.',
+            ],
         ];
     }
 
