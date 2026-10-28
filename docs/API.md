@@ -207,6 +207,15 @@ Registro della spesa pubblicitaria per cliente. Lettura per tutti i ruoli, scrit
 - `PATCH /ad-spend/{id}`, `DELETE /ad-spend/{id}` — `409` se la riga è in una fattura già emessa o pagata.
 - `POST /brands/{id}/ad-spend/import` — multipart con `file` (CSV di Gestione inserzioni di Meta, in italiano o inglese, max 2 MB), `platform`, `project_id` facoltativo e `preview=1` per vedere cosa verrebbe importato senza salvare. Riconosce separatore (`;` `,` tab), codifica e formato dei numeri; ignora la riga dei totali. Reimportare lo stesso periodo aggiorna le righe invece di duplicarle; quelle già fatturate restano invariate (`counts.locked`). Solo importi in euro.
 
+## Pagamento delle sponsorizzate Meta
+
+Per ogni cliente si indica chi paga le inserzioni e si segue una guida a passaggi (nella scheda del cliente). I dati di pagamento non passano mai dall'app: la carta si inserisce solo su Meta.
+
+- `GET /brands/{id}/ads-setup` — `{ ads_payer: "client"|"agency"|null, meta_ad_account_id, meta_business_id, steps, total_steps }`. Tutti i ruoli.
+- `PATCH /brands/{id}/ads-setup` — owner, admin, editor. `ads_payer`, `meta_ad_account_id` e `meta_business_id` (solo cifre; il prefisso `act_` viene tolto), `steps` (passaggi completati). Passaggi ammessi: con `client` `client_portfolio`, `client_ad_account`, `client_payment`, `partner_access`, `people_assigned`; con `agency` `agency_ad_account`, `agency_payment`, `page_access`, `people_assigned`, `billing_setup`. Cambiando chi paga, i passaggi ripartono da zero.
+
+Con `ads_payer: "client"` le bozze di fattura non rifatturano la spesa pubblicitaria (il cliente paga Meta direttamente): resta la commissione calcolata sulla spesa del registro.
+
 ## Link tracciati e clic
 
 Un link breve `/r/{codice}` (fuori da `/api/v1`, pubblico) conta i clic e reindirizza (302) alla destinazione con i parametri UTM, così le visite compaiono anche in Google Analytics. L'indirizzo pubblico si basa su `APP_URL`: in produzione deve essere il dominio raggiungibile da internet.

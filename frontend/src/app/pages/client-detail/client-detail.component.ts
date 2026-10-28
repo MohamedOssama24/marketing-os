@@ -9,6 +9,7 @@ import { ApiService } from '../../core/api.service';
 import { Asset, Brand, CHANNEL_LABELS, Channel, GoalSuggestion, Project, apiErrorMessage } from '../../core/models';
 import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { BrandFormComponent } from '../../shared/brand-form.component';
+import { MetaAdsSetupComponent } from '../../shared/meta-ads-setup.component';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
 import { PROJECT_STATUS_LABELS } from '../projects/projects.component';
 
@@ -17,7 +18,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent],
+  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent],
   template: `
     <a routerLink="/clients" class="back"><i class="ti ti-arrow-left" aria-hidden="true"></i> Clienti</a>
 
@@ -192,6 +193,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
             </section>
           </div>
         </div>
+        <app-meta-ads-setup [brandId]="b.id" />
       }
     } @else if (error()) {
       <div class="alert">{{ error() }}</div>

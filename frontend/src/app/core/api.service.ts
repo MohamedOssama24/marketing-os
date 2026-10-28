@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, AdImportResult, AdPlatform, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -161,6 +161,10 @@ export class ApiService {
     if (projectId) form.append('project_id', String(projectId));
     return this.post<AdImportResult>(`/brands/${brandId}/ad-spend/import`, form);
   }
+
+  // Sponsorizzate Meta: chi paga, account pubblicitario, passaggi della guida
+  adsSetup = (brandId: number) => this.get<AdsSetup>(`/brands/${brandId}/ads-setup`);
+  updateAdsSetup = (brandId: number, data: Partial<Pick<AdsSetup, 'ads_payer' | 'meta_ad_account_id' | 'steps'>>) => this.patch<AdsSetup>(`/brands/${brandId}/ads-setup`, data);
 
   // Link tracciati
   links(filter: { brandId?: number | null; contentId?: number } = {}): Observable<TrackedLink[]> {

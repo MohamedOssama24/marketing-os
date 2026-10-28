@@ -270,7 +270,7 @@ final class BillingController
     public static function rebuild(int $invoiceId, int $organizationId): void
     {
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('SELECT i.id, i.status, i.period, i.vat_rate, i.brand_profile_id, b.monthly_fee, b.ad_fee_percent
+        $stmt = $pdo->prepare('SELECT i.id, i.status, i.period, i.vat_rate, i.brand_profile_id, b.monthly_fee, b.ad_fee_percent, b.ads_payer
             FROM invoices i JOIN brand_profiles b ON b.id=i.brand_profile_id WHERE i.id=? AND i.organization_id=?');
         $stmt->execute([$invoiceId, $organizationId]);
         $invoice = $stmt->fetch();
@@ -287,17 +287,21 @@ final class BillingController
         $stmt = $pdo->prepare('SELECT id, platform, campaign_name, period_start, period_end, spent FROM ad_spend WHERE invoice_id=? ORDER BY period_start, id');
         $stmt->execute([$invoiceId]);
         $platforms = ['meta' => 'Meta', 'google' => 'Google', 'tiktok' => 'TikTok', 'linkedin' => 'LinkedIn', 'other' => 'Altra piattaforma'];
+        // Se il cliente paga Meta con la sua carta la spesa non si rifattura: resta solo la commissione calcolata su di essa.
+        $clientPays = $invoice['ads_payer'] === 'client';
         $adTotal = 0.0;
         foreach ($stmt->fetchAll() as $position => $spend) {
+            $adTotal += (float)$spend['spent'];
+            if ($clientPays) continue;
             $range = date('d/m', strtotime($spend['period_start'])) . '–' . date('d/m/Y', strtotime($spend['period_end']));
             $description = mb_substr("Sponsorizzata {$platforms[$spend['platform']]}: {$spend['campaign_name']} ({$range})", 0, 300);
             $insert->execute([$invoiceId, 'ad_spend', $description, $spend['spent'], $spend['id'], 10 + $position]);
-            $adTotal += (float)$spend['spent'];
         }
         $percent = (float)$invoice['ad_fee_percent'];
         if ($percent > 0 && $adTotal > 0) {
             $label = rtrim(rtrim(number_format($percent, 2, ',', ''), '0'), ',');
-            $insert->execute([$invoiceId, 'ad_fee', "Commissione gestione sponsorizzate ({$label}% di € " . number_format($adTotal, 2, ',', '.') . ')', round($adTotal * $percent / 100, 2), null, 900]);
+            $paidBy = $clientPays ? ' pagate direttamente dal cliente' : '';
+            $insert->execute([$invoiceId, 'ad_fee', "Commissione gestione sponsorizzate{$paidBy} ({$label}% di € " . number_format($adTotal, 2, ',', '.') . ')', round($adTotal * $percent / 100, 2), null, 900]);
         }
 
         $subtotal = round((float)$pdo->query("SELECT COALESCE(SUM(amount), 0) FROM invoice_lines WHERE invoice_id={$invoiceId}")->fetchColumn(), 2);

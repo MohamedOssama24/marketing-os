@@ -442,3 +442,16 @@ export interface LinkSummary {
 export const CLICK_SOURCE_LABELS: Record<string, string | undefined> = {
   instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', google: 'Google', x: 'X', email: 'Email', direct: 'Diretto o app', other: 'Altri siti',
 };
+
+// Pagamento delle sponsorizzate Meta
+
+export type AdsPayer = 'client' | 'agency';
+
+export interface AdsSetup {
+  brand_profile_id: number;
+  ads_payer: AdsPayer | null;
+  meta_ad_account_id: string | null;
+  meta_business_id: string | null;
+  steps: string[];
+  total_steps: number;
+}

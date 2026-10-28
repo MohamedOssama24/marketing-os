@@ -87,6 +87,8 @@ $router->add('GET', '/api/v1/ad-spend/summary', [AdSpendController::class, 'summ
 $router->add('PATCH', '/api/v1/ad-spend/{id}', [AdSpendController::class, 'update']);
 $router->add('DELETE', '/api/v1/ad-spend/{id}', [AdSpendController::class, 'destroy']);
 $router->add('POST', '/api/v1/brands/{brandId}/ad-spend/import', [AdSpendController::class, 'import']);
+$router->add('GET', '/api/v1/brands/{brandId}/ads-setup', [AdsSetupController::class, 'show']);
+$router->add('PATCH', '/api/v1/brands/{brandId}/ads-setup', [AdsSetupController::class, 'update']);
 
 $router->add('GET', '/api/v1/billing/clients', [BillingController::class, 'clients']);
 $router->add('PATCH', '/api/v1/billing/clients/{brandId}', [BillingController::class, 'updateClient']);

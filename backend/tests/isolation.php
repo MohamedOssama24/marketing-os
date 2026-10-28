@@ -491,6 +491,24 @@ check('Il link eliminato non reindirizza più', hit($code, $desktop)[0] === 404)
 $free = req('POST', '/links', $a['token'], ['brand_profile_id' => $brandA['id'], 'target_url' => 'https://example.com/?utm_source=bio', 'label' => 'Link in bio']);
 check('Link libero che rispetta gli UTM già presenti', $free[0] === 201 && ($free[1]['data']['destination_url'] ?? '') === 'https://example.com/?utm_source=bio', $free[2]);
 
+echo "\nPagamento delle sponsorizzate Meta\n";
+expectStatus('Viewer vede la configurazione', req('GET', "/brands/{$brandA['id']}/ads-setup", $viewer), 200);
+expectStatus('Viewer non la modifica', req('PATCH', "/brands/{$brandA['id']}/ads-setup", $viewer, ['ads_payer' => 'client']), 403);
+expectStatus('B non vede la configurazione di A', req('GET', "/brands/{$brandA['id']}/ads-setup", $b['token']), 404);
+expectStatus('B non modifica la configurazione di A', req('PATCH', "/brands/{$brandA['id']}/ads-setup", $b['token'], ['ads_payer' => 'client']), 404);
+expectStatus('ID account pubblicitario non valido', req('PATCH', "/brands/{$brandA['id']}/ads-setup", $editor, ['meta_ad_account_id' => 'abc']), 422);
+$setup = req('PATCH', "/brands/{$brandA['id']}/ads-setup", $editor, ['ads_payer' => 'client', 'meta_ad_account_id' => 'act_123456789', 'steps' => ['client_payment', 'agency_payment', 'x']]);
+check('Chi paga, account e passaggi della guida', ($setup[1]['data']['meta_ad_account_id'] ?? '') === '123456789' && ($setup[1]['data']['steps'] ?? null) === ['client_payment'] && ($setup[1]['data']['total_steps'] ?? 0) === 5, $setup[2]);
+$switched = req('PATCH', "/brands/{$brandA['id']}/ads-setup", $editor, ['ads_payer' => 'agency']);
+check('Cambiando chi paga i passaggi ripartono', ($switched[1]['data']['steps'] ?? null) === [], $switched[2]);
+req('PATCH', "/brands/{$brandA['id']}/ads-setup", $editor, ['ads_payer' => 'client']);
+$clientPays = req('POST', '/invoices/prepare', $a['token'], ['period' => '2026-09']);
+$clientInvoice = array_values(array_filter($clientPays[1]['data']['invoices'] ?? [], fn($i) => $i['brand_profile_id'] === $brandA['id']))[0] ?? [];
+$clientLines = req('GET', '/invoices/' . ($clientInvoice['id'] ?? 0), $a['token'])[1]['data']['lines'] ?? [];
+// Se paga il cliente: canone 500 + commissione 10% di 1634,56, senza rifatturare la spesa.
+check('Se paga il cliente si fattura solo la commissione', ($clientInvoice['subtotal'] ?? 0) == 663.46 && !in_array('ad_spend', array_column($clientLines, 'kind'), true), json_encode($clientLines));
+req('DELETE', '/invoices/' . ($clientInvoice['id'] ?? 0), $a['token']);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);
