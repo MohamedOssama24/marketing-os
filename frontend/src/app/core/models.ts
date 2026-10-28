@@ -455,3 +455,50 @@ export interface AdsSetup {
   steps: string[];
   total_steps: number;
 }
+
+// Report mensile per il cliente
+
+export interface ClientReport {
+  period: string;
+  period_label: string;
+  previous_label: string;
+  generated_at: string;
+  agency: { name: string };
+  client: { id: number; name: string; website_url: string | null; primary_color: string | null; secondary_color: string | null; logo_asset_id: number | null; has_logo: boolean };
+  summary: string | null;
+  next_steps: string | null;
+  content: {
+    published: number;
+    previous: number;
+    planned_next_month: number;
+    by_channel: { name: Channel; posts: number }[];
+    posts: { id: number; title: string; channel: Channel; content_type: string; published_at: string; published_url: string | null; clicks: number }[];
+  };
+  clicks: {
+    clicks: number;
+    unique_clicks: number;
+    previous: { clicks: number; unique_clicks: number };
+    daily: { day: string; clicks: number }[];
+    sources: { name: string; clicks: number }[];
+    devices: { name: string; clicks: number }[];
+    top_links: { label: string; clicks: number }[];
+  };
+  ads: {
+    totals: AdMetrics;
+    previous: { spent: number; clicks: number; results: number };
+    campaigns: (AdMetrics & { platform: AdPlatform; campaign_name: string; period_start: string; period_end: string })[];
+  };
+  /** Solo nell'app dell'agenzia, non nel report pubblico */
+  share?: { token: string | null; shared_at: string | null; views: number; last_viewed_at: string | null };
+}
+
+export interface ReportStatus {
+  id: number;
+  name: string;
+  primary_color: string | null;
+  logo_asset_id: number | null;
+  has_summary: boolean;
+  shared: boolean;
+  views: number;
+  last_viewed_at: string | null;
+}

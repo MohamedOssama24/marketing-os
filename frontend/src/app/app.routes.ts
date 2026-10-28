@@ -5,6 +5,8 @@ import { ShellComponent } from './layout/shell.component';
 export const routes: Routes = [
   { path: 'login', canActivate: [guestGuard], loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent) },
   { path: 'register', canActivate: [guestGuard], loadComponent: () => import('./pages/register/register.component').then((m) => m.RegisterComponent) },
+  // Report aperto dal cliente con il link condiviso: pubblico, senza accesso.
+  { path: 'report/:token', loadComponent: () => import('./pages/reports/public-report.component').then((m) => m.PublicReportComponent) },
   {
     path: '',
     component: ShellComponent,
@@ -20,6 +22,7 @@ export const routes: Routes = [
       { path: 'assets', loadComponent: () => import('./pages/assets/assets.component').then((m) => m.AssetsComponent) },
       { path: 'ads', loadComponent: () => import('./pages/ads/ads.component').then((m) => m.AdsComponent) },
       { path: 'links', loadComponent: () => import('./pages/links/links.component').then((m) => m.LinksComponent) },
+      { path: 'reports', loadComponent: () => import('./pages/reports/reports.component').then((m) => m.ReportsComponent) },
       { path: 'billing', canActivate: [managerGuard], loadComponent: () => import('./pages/billing/billing.component').then((m) => m.BillingComponent) },
       { path: 'team', loadComponent: () => import('./pages/team/team.component').then((m) => m.TeamComponent) },
       { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent) },

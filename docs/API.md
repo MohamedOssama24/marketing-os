@@ -229,6 +229,23 @@ Non vengono contate le anteprime automatiche (Facebook, WhatsApp, LinkedIn, Goog
 
 L'elenco dei contenuti di una campagna (`GET /projects/{id}/content`) include `tracked_link` con indirizzo breve e clic.
 
+## Report mensile per il cliente
+
+I numeri si ricalcolano sempre dai dati del mese (`period` = `AAAA-MM`): post pubblicati, clic sui link del cliente (per giorno, provenienza e dispositivo), sponsorizzate con fine periodo nel mese, confronto con il mese prima e post già programmati per il mese dopo. Si salvano solo il commento dell'agenzia e il link pubblico.
+
+- `GET /reports?period=` — stato del report per ogni cliente: `has_summary`, `shared`, `views`, `last_viewed_at`. Tutti i ruoli.
+- `GET /brands/{id}/report?period=` — il report completo, con `share` (`token`, `shared_at`, `views`, `last_viewed_at`). Tutti i ruoli.
+- `PATCH /brands/{id}/report` — owner, admin, editor. `{ "period", "summary"?, "next_steps"? }` (massimo 5000 caratteri ciascuno).
+- `POST /brands/{id}/report/share` — owner, admin, editor. `{ "period" }`. Crea il link pubblico; se esiste già restituisce lo stesso.
+- `POST /brands/{id}/report/unshare` — owner, admin, editor. `{ "period" }`. Disattiva il link e azzera le aperture; una nuova condivisione crea un link diverso.
+
+Pubblici, senza token (il frontend li apre da `/report/{token}`):
+
+- `GET /public/reports/{token}` — il report senza `share` né id interni; ogni richiesta conta come apertura. 404 se il link è disattivato o l'organizzazione è sospesa.
+- `GET /public/reports/{token}/logo` — il logo del cliente.
+
+Il PDF si ottiene dal browser con "Scarica PDF" (stampa → Salva come PDF): il foglio di stile di stampa mostra solo il report, in formato A4.
+
 ## Fatturazione
 
 Solo owner e admin. Una fattura al mese per cliente, con stati `to_invoice` → `invoiced` → `paid`. La fattura elettronica si emette nel gestionale o dal commercialista: qui si preparano gli importi, si registra il numero e si segue il pagamento.

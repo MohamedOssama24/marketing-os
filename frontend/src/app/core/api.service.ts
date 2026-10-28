@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, ClientReport, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -182,6 +182,16 @@ export class ApiService {
   /** Con content_item_id restituisce il link già esistente del post, se c'è. */
   createLink = (data: { target_url?: string | null; content_item_id?: number; brand_profile_id?: number | null; label?: string | null }) => this.post<TrackedLink>('/links', data);
   deleteLink = (id: number) => this.delete(`/links/${id}`);
+
+  // Report mensili per i clienti
+  reports = (period: string) => this.get<{ period: string; clients: ReportStatus[] }>(`/reports?period=${period}`);
+  report = (brandId: number, period: string) => this.get<ClientReport>(`/brands/${brandId}/report?period=${period}`);
+  updateReport = (brandId: number, data: { period: string; summary: string | null; next_steps: string | null }) => this.patch<ClientReport>(`/brands/${brandId}/report`, data);
+  shareReport = (brandId: number, period: string) => this.post<ClientReport>(`/brands/${brandId}/report/share`, { period });
+  unshareReport = (brandId: number, period: string) => this.post<ClientReport>(`/brands/${brandId}/report/unshare`, { period });
+  /** Report aperto dal cliente con il link pubblico: nessun token. */
+  publicReport = (token: string) => this.get<ClientReport>(`/public/reports/${token}`);
+  publicReportLogoUrl = (token: string) => `${API_URL}/public/reports/${token}/logo`;
 
   // Fatturazione
   billingClients = () => this.get<BillingClient[]>('/billing/clients');

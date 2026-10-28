@@ -51,6 +51,7 @@ export class ShellComponent implements OnInit {
     { path: '/assets', label: 'Libreria', icon: 'ti-photo' },
     { path: '/ads', label: 'Sponsorizzate', icon: 'ti-coin-euro' },
     { path: '/links', label: 'Link e clic', icon: 'ti-click' },
+    { path: '/reports', label: 'Report clienti', icon: 'ti-report-analytics' },
     { path: '/team', label: 'Team', icon: 'ti-users' },
   ];
 

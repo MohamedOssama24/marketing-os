@@ -509,6 +509,32 @@ $clientLines = req('GET', '/invoices/' . ($clientInvoice['id'] ?? 0), $a['token'
 check('Se paga il cliente si fattura solo la commissione', ($clientInvoice['subtotal'] ?? 0) == 663.46 && !in_array('ad_spend', array_column($clientLines, 'kind'), true), json_encode($clientLines));
 req('DELETE', '/invoices/' . ($clientInvoice['id'] ?? 0), $a['token']);
 
+echo "\nReport mensile per il cliente\n";
+$reportPath = "/brands/{$brandA['id']}/report";
+expectStatus('Mese non valido', req('GET', "{$reportPath}?period=2026-13", $a['token']), 422);
+expectStatus('Viewer legge il report', req('GET', "{$reportPath}?period=2026-09", $viewer), 200);
+expectStatus('Viewer non scrive il commento', req('PATCH', $reportPath, $viewer, ['period' => '2026-09', 'summary' => 'x']), 403);
+expectStatus('B non legge il report di A', req('GET', "{$reportPath}?period=2026-09", $b['token']), 404);
+expectStatus('B non condivide il report di A', req('POST', "{$reportPath}/share", $b['token'], ['period' => '2026-09']), 404);
+$report = req('GET', "{$reportPath}?period=2026-09", $a['token'])[1]['data'] ?? [];
+check('Spesa del mese uguale alla somma delle campagne', abs(($report['ads']['totals']['spent'] ?? -1) - array_sum(array_column($report['ads']['campaigns'] ?? [], 'spent'))) < 0.01 && count($report['clicks']['daily'] ?? []) === 30, json_encode($report['ads'] ?? null));
+$noted = req('PATCH', $reportPath, $editor, ['period' => '2026-09', 'summary' => 'Ottimo mese', 'next_steps' => 'Campagna di Natale']);
+check("L'editor salva il commento", ($noted[1]['data']['summary'] ?? '') === 'Ottimo mese' && array_key_exists('token', $noted[1]['data']['share'] ?? []) && $noted[1]['data']['share']['token'] === null, $noted[2]);
+$shared = req('POST', "{$reportPath}/share", $editor, ['period' => '2026-09']);
+$reportToken = $shared[1]['data']['share']['token'] ?? '';
+check('Link pubblico creato senza perdere il commento', preg_match('/^[a-f0-9]{32}$/', $reportToken) === 1 && ($shared[1]['data']['summary'] ?? '') === 'Ottimo mese', $shared[2]);
+check('Condividere di nuovo mantiene lo stesso link', (req('POST', "{$reportPath}/share", $a['token'], ['period' => '2026-09'])[1]['data']['share']['token'] ?? '') === $reportToken);
+$public = req('GET', "/public/reports/{$reportToken}");
+check('Il cliente apre il report senza accesso', $public[0] === 200 && ($public[1]['data']['summary'] ?? '') === 'Ottimo mese' && !array_key_exists('share', $public[1]['data'] ?? []) && array_key_exists('logo_asset_id', $public[1]['data']['client'] ?? []) && $public[1]['data']['client']['logo_asset_id'] === null, $public[2]);
+check("Le aperture del cliente si contano", (req('GET', "{$reportPath}?period=2026-09", $a['token'])[1]['data']['share']['views'] ?? 0) === 1);
+$statusA = array_values(array_filter(req('GET', '/reports?period=2026-09', $a['token'])[1]['data']['clients'] ?? [], fn($c) => $c['id'] === $brandA['id']))[0] ?? [];
+check('Stato del report nella lista', ($statusA['shared'] ?? false) === true && ($statusA['has_summary'] ?? false) === true && ($statusA['views'] ?? 0) === 1, json_encode($statusA));
+check('Lista report di B senza clienti di A', !in_array($brandA['id'], array_column(req('GET', '/reports?period=2026-09', $b['token'])[1]['data']['clients'] ?? [], 'id')));
+expectStatus('Viewer non disattiva il link', req('POST', "{$reportPath}/unshare", $viewer, ['period' => '2026-09']), 403);
+expectStatus('A disattiva il link', req('POST', "{$reportPath}/unshare", $a['token'], ['period' => '2026-09']), 200);
+expectStatus('Il link disattivato non mostra più il report', req('GET', "/public/reports/{$reportToken}"), 404);
+expectStatus('Né il logo', req('GET', "/public/reports/{$reportToken}/logo"), 404);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

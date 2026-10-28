@@ -257,7 +257,7 @@ final class AdSpendController
     }
 
     /** Totali con CPC, CTR e costo per risultato calcolati. */
-    private static function metrics(array $r): array
+    public static function metrics(array $r): array
     {
         $spent = round((float)($r['spent'] ?? 0), 2);
         $clicks = (int)($r['clicks'] ?? 0);

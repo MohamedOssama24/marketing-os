@@ -21,6 +21,10 @@ $path = rtrim($path, '/') ?: '/';
 if (preg_match('#^/r/([A-Za-z0-9]{4,16})$#', $path, $linkMatch) && in_array($method, ['GET', 'HEAD'], true)) {
     LinkController::redirect($linkMatch[1]);
 }
+// Report mensile aperto dal cliente con il link pubblico, senza accesso.
+if (preg_match('#^/api/v1/public/reports/([a-f0-9]{32})(/logo)?$#', $path, $reportMatch) && $method === 'GET') {
+    empty($reportMatch[2]) ? ReportController::publicShow($reportMatch[1]) : ReportController::publicLogo($reportMatch[1]);
+}
 
 $router = new Router();
 $router->add('GET', '/api/v1/health', function (): never {
@@ -109,6 +113,13 @@ $router->add('GET', '/api/v1/links', [LinkController::class, 'index']);
 $router->add('POST', '/api/v1/links', [LinkController::class, 'store']);
 $router->add('GET', '/api/v1/links/summary', [LinkController::class, 'summary']);
 $router->add('DELETE', '/api/v1/links/{id}', [LinkController::class, 'destroy']);
+
+// Report mensili per i clienti
+$router->add('GET', '/api/v1/reports', [ReportController::class, 'index']);
+$router->add('GET', '/api/v1/brands/{brandId}/report', [ReportController::class, 'show']);
+$router->add('PATCH', '/api/v1/brands/{brandId}/report', [ReportController::class, 'update']);
+$router->add('POST', '/api/v1/brands/{brandId}/report/share', [ReportController::class, 'share']);
+$router->add('POST', '/api/v1/brands/{brandId}/report/unshare', [ReportController::class, 'unshare']);
 
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);
