@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, AdImportResult, AdPlatform, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, AdImportResult, AdPlatform, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
 } from './models';
 
@@ -161,6 +161,23 @@ export class ApiService {
     if (projectId) form.append('project_id', String(projectId));
     return this.post<AdImportResult>(`/brands/${brandId}/ad-spend/import`, form);
   }
+
+  // Link tracciati
+  links(filter: { brandId?: number | null; contentId?: number } = {}): Observable<TrackedLink[]> {
+    const params = new URLSearchParams();
+    if (filter.brandId) params.set('brand_id', String(filter.brandId));
+    if (filter.contentId) params.set('content_id', String(filter.contentId));
+    return this.get<TrackedLink[]>(`/links${params.toString() ? '?' + params : ''}`);
+  }
+  linkSummary(days: number, filter: { brandId?: number | null; linkId?: number | null } = {}): Observable<LinkSummary> {
+    const params = new URLSearchParams({ days: String(days) });
+    if (filter.brandId) params.set('brand_id', String(filter.brandId));
+    if (filter.linkId) params.set('link_id', String(filter.linkId));
+    return this.get<LinkSummary>(`/links/summary?${params}`);
+  }
+  /** Con content_item_id restituisce il link già esistente del post, se c'è. */
+  createLink = (data: { target_url?: string | null; content_item_id?: number; brand_profile_id?: number | null; label?: string | null }) => this.post<TrackedLink>('/links', data);
+  deleteLink = (id: number) => this.delete(`/links/${id}`);
 
   // Fatturazione
   billingClients = () => this.get<BillingClient[]>('/billing/clients');

@@ -17,6 +17,11 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $path = rtrim($path, '/') ?: '/';
 
+// Link tracciati pubblici: fuori dalle API perché li apre chiunque clicchi su un post.
+if (preg_match('#^/r/([A-Za-z0-9]{4,16})$#', $path, $linkMatch) && in_array($method, ['GET', 'HEAD'], true)) {
+    LinkController::redirect($linkMatch[1]);
+}
+
 $router = new Router();
 $router->add('GET', '/api/v1/health', function (): never {
     Database::connection()->query('SELECT 1');
@@ -96,6 +101,12 @@ $router->add('DELETE', '/api/v1/invoices/{id}/lines/{lineId}', [BillingControlle
 $router->add('POST', '/api/v1/invoices/{id}/issue', [BillingController::class, 'issue']);
 $router->add('POST', '/api/v1/invoices/{id}/paid', [BillingController::class, 'markPaid']);
 $router->add('POST', '/api/v1/invoices/{id}/reopen', [BillingController::class, 'reopen']);
+
+// Link tracciati e clic
+$router->add('GET', '/api/v1/links', [LinkController::class, 'index']);
+$router->add('POST', '/api/v1/links', [LinkController::class, 'store']);
+$router->add('GET', '/api/v1/links/summary', [LinkController::class, 'summary']);
+$router->add('DELETE', '/api/v1/links/{id}', [LinkController::class, 'destroy']);
 
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);

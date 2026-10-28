@@ -191,7 +191,7 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <button class="btn primary small full-width" (click)="publishing.set(true)"><i class="ti ti-send" aria-hidden="true"></i> Pubblica</button>
           }
           @if (item.status === 'published') {
-            <button class="btn ghost small full-width" (click)="publishing.set(true)"><i class="ti ti-circle-check" aria-hidden="true"></i> Pubblicato · apri il kit</button>
+            <button class="btn ghost small full-width" (click)="publishing.set(true)"><i class="ti ti-circle-check" aria-hidden="true"></i> Pubblicato@if (item.tracked_link) { · {{ item.tracked_link.clicks }} clic} · apri il kit</button>
           }
         </div>
       }

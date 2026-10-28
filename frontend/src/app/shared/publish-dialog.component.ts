@@ -5,7 +5,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { ApiService } from '../core/api.service';
-import { Brand, CHANNEL_LABELS, ContentItem, apiErrorMessage } from '../core/models';
+import { Brand, CHANNEL_LABELS, ContentItem, TrackedLink, apiErrorMessage } from '../core/models';
 import { PostVisualComponent } from './post-visual.component';
 import { EmailService, UNSUBSCRIBE_PLACEHOLDERS, blobToDataUrl, buildNewsletterHtml, publishableText } from './publishing';
 
@@ -63,6 +63,33 @@ interface NetworkLink {
               <section class="step">
                 <span class="step-num">2</span>
                 <div class="step-body">
+                  <h3>Link per contare i clic</h3>
+                  @if (link(); as l) {
+                    <div class="tracked-link">
+                      <code>{{ l.short_url }}</code>
+                      <button class="icon-btn" (click)="copy(l.short_url, 'link')" [attr.aria-label]="copied() === 'link' ? 'Copiato' : 'Copia link'" title="Copia link">
+                        <i class="ti" [class]="copied() === 'link' ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button>
+                      <span class="link-clicks"><strong>{{ l.clicks }}</strong> clic · {{ l.unique_clicks }} persone</span>
+                    </div>
+                    <p class="muted small ellipsis" [title]="l.destination_url">Porta a {{ l.target_url }} con i parametri UTM, così le visite si vedono anche in Google Analytics.</p>
+                    @if (!caption.includes(l.short_url)) {
+                      <div class="actions start"><button class="btn ghost small" (click)="addLinkToCaption(l.short_url)"><i class="ti ti-text-plus" aria-hidden="true"></i> Inserisci nel testo</button></div>
+                    }
+                    @if (item.channel === 'instagram') { <p class="muted small">Su Instagram i link nel testo non sono cliccabili: usalo nello sticker "Link" delle storie o nel link in bio.</p> }
+                  } @else if (auth.canEdit()) {
+                    <p class="muted small">Crea un link breve da mettere nel post: ogni clic viene contato e lo vedi qui e nella pagina Link e clic.</p>
+                    <div class="rewrite-custom">
+                      <input [(ngModel)]="linkTarget" placeholder="Pagina di destinazione, es. sito.it/offerta" aria-label="Pagina di destinazione" />
+                      <button class="btn ghost small" (click)="createLink()" [disabled]="busy() || !linkTarget.trim()"><i class="ti ti-link-plus" aria-hidden="true"></i> Crea link</button>
+                    </div>
+                  } @else {
+                    <p class="muted small">Nessun link tracciato per questo post.</p>
+                  }
+                </div>
+              </section>
+              <section class="step">
+                <span class="step-num">3</span>
+                <div class="step-body">
                   <h3>Copia il testo</h3>
                   <textarea rows="6" readonly [value]="caption"></textarea>
                   <div class="actions start">
@@ -71,7 +98,7 @@ interface NetworkLink {
                 </div>
               </section>
               <section class="step">
-                <span class="step-num">3</span>
+                <span class="step-num">4</span>
                 <div class="step-body">
                   <h3>Apri il social e pubblica</h3>
                   <div class="network-grid">
@@ -152,6 +179,8 @@ export class PublishDialogComponent implements OnInit {
   subject = '';
   service: EmailService = 'brevo';
   publishedUrl = '';
+  link = signal<TrackedLink | null>(null);
+  linkTarget = '';
   networks: NetworkLink[] = [];
   private imageDataUrl: string | null = null;
   private logoDataUrl: string | null = null;
@@ -161,7 +190,32 @@ export class PublishDialogComponent implements OnInit {
     this.subject = this.item.title.slice(0, 120);
     this.publishedUrl = this.item.published_url ?? '';
     this.networks = this.buildNetworks();
+    this.linkTarget = this.brand?.website_url ?? '';
+    this.api.links({ contentId: this.item.id }).subscribe({ next: (links) => this.link.set(links[0] ?? null), error: () => undefined });
     if (this.item.channel === 'email') this.openEmail();
+  }
+
+  createLink(): void {
+    this.busy.set(true);
+    this.error.set(null);
+    this.api.createLink({ content_item_id: this.item.id, target_url: this.linkTarget.trim() }).subscribe({
+      next: (link) => {
+        this.busy.set(false);
+        this.link.set(link);
+        this.addLinkToCaption(link.short_url);
+        this.item = { ...this.item, tracked_link: { short_url: link.short_url, clicks: link.clicks, unique_clicks: link.unique_clicks } };
+        this.changed.emit(this.item);
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(apiErrorMessage(err));
+      },
+    });
+  }
+
+  addLinkToCaption(url: string): void {
+    this.caption = `${this.caption.trimEnd()}\n\n${url}`;
+    this.networks = this.buildNetworks();
   }
 
   @HostListener('document:keydown.escape')
@@ -279,8 +333,9 @@ export class PublishDialogComponent implements OnInit {
     request.subscribe({
       next: (updated) => {
         this.busy.set(false);
-        this.item = updated;
-        this.changed.emit(updated);
+        // La risposta di pubblicazione non porta i clic del link: si tengono quelli già noti.
+        this.item = { ...updated, tracked_link: this.item.tracked_link };
+        this.changed.emit(this.item);
       },
       error: (err) => {
         this.busy.set(false);

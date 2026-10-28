@@ -12,7 +12,7 @@ final class ContentController
         Tenant::findOrFail('projects', $projectId, $user['organization_id'], 'id');
         $stmt = Database::connection()->prepare('SELECT ' . self::COLUMNS . ' FROM content_items WHERE project_id=? AND organization_id=? ORDER BY scheduled_at IS NULL, scheduled_at, created_at DESC, id DESC LIMIT 300');
         $stmt->execute([$projectId, $user['organization_id']]);
-        Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
+        Http::json(['data' => LinkController::withClicks(array_map([self::class, 'present'], $stmt->fetchAll()), $user['organization_id'])]);
     }
 
     /** Contenuti in attesa di approvazione in tutta l'organizzazione, con progetto e brand. */

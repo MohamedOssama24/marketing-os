@@ -207,6 +207,19 @@ Registro della spesa pubblicitaria per cliente. Lettura per tutti i ruoli, scrit
 - `PATCH /ad-spend/{id}`, `DELETE /ad-spend/{id}` — `409` se la riga è in una fattura già emessa o pagata.
 - `POST /brands/{id}/ad-spend/import` — multipart con `file` (CSV di Gestione inserzioni di Meta, in italiano o inglese, max 2 MB), `platform`, `project_id` facoltativo e `preview=1` per vedere cosa verrebbe importato senza salvare. Riconosce separatore (`;` `,` tab), codifica e formato dei numeri; ignora la riga dei totali. Reimportare lo stesso periodo aggiorna le righe invece di duplicarle; quelle già fatturate restano invariate (`counts.locked`). Solo importi in euro.
 
+## Link tracciati e clic
+
+Un link breve `/r/{codice}` (fuori da `/api/v1`, pubblico) conta i clic e reindirizza (302) alla destinazione con i parametri UTM, così le visite compaiono anche in Google Analytics. L'indirizzo pubblico si basa su `APP_URL`: in produzione deve essere il dominio raggiungibile da internet.
+
+Non vengono contate le anteprime automatiche (Facebook, WhatsApp, LinkedIn, Google e altri bot) né le richieste `HEAD`. Non si salva l'IP: per i visitatori unici si usa un'impronta che cambia ogni giorno. La provenienza (`instagram`, `facebook`, `linkedin`, `google`, `x`, `email`, `direct`, `other`) si ricava dal browser interno delle app o dal referrer.
+
+- `GET /links?brand_id=&content_id=` — link con `short_url`, `destination_url`, `clicks`, `unique_clicks`, `last_click_at`. Tutti i ruoli.
+- `GET /links/summary?days=30&brand_id=&link_id=` — clic per giorno, per provenienza e per dispositivo (7–365 giorni).
+- `POST /links` — owner, admin, editor. `{ "content_item_id"?, "brand_profile_id"?, "target_url"?, "label"?, "utm_source"?, "utm_medium"?, "utm_campaign"?, "utm_content"? }`. Con `content_item_id` cliente e UTM si ricavano dal post (canale, campagna, `post-{id}`), la destinazione predefinita è il sito del cliente e, se il post ha già un link, si restituisce quello. Se la destinazione contiene già parametri `utm_` restano quelli.
+- `DELETE /links/{id}` — dopo l'eliminazione l'indirizzo breve risponde 404.
+
+L'elenco dei contenuti di una campagna (`GET /projects/{id}/content`) include `tracked_link` con indirizzo breve e clic.
+
 ## Fatturazione
 
 Solo owner e admin. Una fattura al mese per cliente, con stati `to_invoice` → `invoiced` → `paid`. La fattura elettronica si emette nel gestionale o dal commercialista: qui si preparano gli importi, si registra il numero e si segue il pagamento.

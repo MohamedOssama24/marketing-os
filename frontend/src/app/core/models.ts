@@ -220,6 +220,8 @@ export interface ContentItem {
   // Presenti solo nell'elenco delle approvazioni
   project_name?: string;
   brand_profile_id?: number | null;
+  /** Presente nell'elenco dei contenuti di una campagna */
+  tracked_link?: { short_url: string; clicks: number; unique_clicks: number } | null;
 }
 
 export interface CalendarItem {
@@ -402,3 +404,41 @@ export interface InvoiceMonth {
   totals: Record<InvoiceStatus, { count: number; total: number }>;
   unbilled_ad_spend: { count: number; spent: number };
 }
+
+// Link tracciati
+
+export interface TrackedLink {
+  id: number;
+  brand_profile_id: number | null;
+  brand_name: string | null;
+  brand_color: string | null;
+  content_item_id: number | null;
+  content_title: string | null;
+  content_channel: Channel | null;
+  code: string;
+  label: string;
+  target_url: string;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  clicks: number;
+  unique_clicks: number;
+  last_click_at: string | null;
+  created_at: string;
+  short_url: string;
+  destination_url: string;
+}
+
+export interface LinkSummary {
+  days: number;
+  clicks: number;
+  unique_clicks: number;
+  daily: { day: string; clicks: number; unique_clicks: number }[];
+  sources: { name: string; clicks: number }[];
+  devices: { name: string; clicks: number }[];
+}
+
+export const CLICK_SOURCE_LABELS: Record<string, string | undefined> = {
+  instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', google: 'Google', x: 'X', email: 'Email', direct: 'Diretto o app', other: 'Altri siti',
+};

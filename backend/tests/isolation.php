@@ -444,6 +444,53 @@ check('Riaperta due volte torna da fatturare', ($reopened[1]['data']['status'] ?
 expectStatus('Eliminazione della bozza', req('DELETE', "/invoices/{$invoiceId}", $a['token']), 200);
 check('Le spese tornano da fatturare', array_filter(req('GET', "/ad-spend?brand_id={$brandA['id']}", $a['token'])[1]['data'] ?? [], fn($r) => $r['invoice_id'] !== null) === []);
 
+echo "\nLink tracciati e clic\n";
+/** Apre un link breve come farebbe un browser, senza seguire il reindirizzamento. */
+function hit(string $code, string $agent, string $referrer = ''): array
+{
+    global $base;
+    $ch = curl_init(preg_replace('#/api/v1$#', '', $base) . "/r/{$code}");
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_USERAGENT => $agent, CURLOPT_REFERER => $referrer]);
+    $response = (string)curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    return [$status, preg_match('/^Location:\s*(\S+)/mi', $response, $m) ? $m[1] : null];
+}
+$iphoneInstagram = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 330.0.0.40.92';
+$desktop = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+
+expectStatus('Viewer non crea link', req('POST', '/links', $viewer, ['content_item_id' => $contentA['id'], 'target_url' => 'https://example.com']), 403);
+expectStatus('B non crea link sui post di A', req('POST', '/links', $b['token'], ['content_item_id' => $contentA['id'], 'target_url' => 'https://example.com']), 422);
+expectStatus('Destinazione non valida', req('POST', '/links', $editor, ['content_item_id' => $contentA['id'], 'target_url' => 'non è un sito']), 422);
+$link = req('POST', '/links', $editor, ['content_item_id' => $contentA['id'], 'target_url' => 'example.com/promo?x=1#form']);
+$linkData = $link[1]['data'] ?? [];
+check('Link del post con UTM ricavati dal post', $link[0] === 201 && ($linkData['utm_source'] ?? '') === 'instagram' && ($linkData['utm_medium'] ?? '') === 'social' && ($linkData['utm_content'] ?? '') === "post-{$contentA['id']}" && ($linkData['brand_profile_id'] ?? 0) === $brandA['id'], $link[2]);
+check('Destinazione con parametri UTM', ($linkData['destination_url'] ?? '') === "https://example.com/promo?x=1&utm_source=instagram&utm_medium=social&utm_campaign=progetto-a&utm_content=post-{$contentA['id']}#form", $linkData['destination_url'] ?? '');
+check('Lo stesso post riusa lo stesso link', (req('POST', '/links', $editor, ['content_item_id' => $contentA['id'], 'target_url' => 'https://example.com/altro'])[1]['data']['id'] ?? 0) === $linkData['id']);
+$code = $linkData['code'] ?? 'x';
+$first = hit($code, $iphoneInstagram);
+check('Il link breve reindirizza alla destinazione', $first[0] === 302 && $first[1] === $linkData['destination_url'], json_encode($first));
+hit($code, $iphoneInstagram);
+check("L'anteprima dei social non conta come clic", hit($code, 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)')[0] === 302);
+hit($code, $desktop, 'https://www.facebook.com/');
+check('Link inesistente', hit('nonEsiste99', $desktop)[0] === 404);
+$listed = array_values(array_filter(req('GET', '/links', $a['token'])[1]['data'] ?? [], fn($l) => $l['id'] === $linkData['id']))[0] ?? [];
+check('Clic e visitatori unici', ($listed['clicks'] ?? 0) === 3 && ($listed['unique_clicks'] ?? 0) === 2, json_encode($listed));
+$linkSummary = req('GET', "/links/summary?link_id={$linkData['id']}", $a['token'])[1]['data'] ?? [];
+$sources = array_column($linkSummary['sources'] ?? [], 'clicks', 'name');
+$devices = array_column($linkSummary['devices'] ?? [], 'clicks', 'name');
+check('Provenienza e dispositivo dei clic', ($linkSummary['clicks'] ?? 0) === 3 && ($sources['instagram'] ?? 0) === 2 && ($sources['facebook'] ?? 0) === 1 && ($devices['mobile'] ?? 0) === 2 && ($devices['desktop'] ?? 0) === 1 && end($linkSummary['daily'])['clicks'] === 3, json_encode($linkSummary));
+$posts = req('GET', "/projects/{$projectA['id']}/content", $viewer)[1]['data'] ?? [];
+$postA = array_values(array_filter($posts, fn($p) => $p['id'] === $contentA['id']))[0] ?? [];
+check('I clic compaiono sul post', ($postA['tracked_link']['clicks'] ?? 0) === 3, json_encode($postA['tracked_link'] ?? null));
+check('Lista link di B senza link di A', !in_array($linkData['id'], array_column(req('GET', '/links', $b['token'])[1]['data'] ?? [], 'id')));
+check('Riepilogo di B senza clic di A', (req('GET', '/links/summary', $b['token'])[1]['data']['clicks'] ?? -1) === 0);
+expectStatus('B non elimina i link di A', req('DELETE', "/links/{$linkData['id']}", $b['token']), 404);
+expectStatus('A elimina il link', req('DELETE', "/links/{$linkData['id']}", $editor), 200);
+check('Il link eliminato non reindirizza più', hit($code, $desktop)[0] === 404);
+$free = req('POST', '/links', $a['token'], ['brand_profile_id' => $brandA['id'], 'target_url' => 'https://example.com/?utm_source=bio', 'label' => 'Link in bio']);
+check('Link libero che rispetta gli UTM già presenti', $free[0] === 201 && ($free[1]['data']['destination_url'] ?? '') === 'https://example.com/?utm_source=bio', $free[2]);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

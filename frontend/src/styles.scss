@@ -453,3 +453,14 @@ tr:last-child td { border-bottom: none; }
   .analyzer-form { flex-direction: column; }
   .week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Link tracciati */
+.tracked-link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 0.86rem; color: var(--primary-ink); } }
+.link-clicks { font-size: 0.86rem; color: var(--muted); strong { color: var(--text); font-size: 1rem; } }
+.links-hint { display: flex; gap: 8px; align-items: flex-start; i { font-size: 18px; margin-top: 1px; } }
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; } }
+.hbar.static { cursor: default; &:hover { background: none; } }
+.devices { margin-top: 12px; }
+.link-cell { max-width: 280px; code { font-size: 0.82rem; color: var(--primary-ink); } small { display: block; } }
+.admin-table tr.selected td { background: var(--primary-soft); }
