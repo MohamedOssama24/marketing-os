@@ -55,6 +55,7 @@ $router->add('GET', '/api/v1/content/{id}', [ContentController::class, 'show']);
 $router->add('PATCH', '/api/v1/content/{id}', [ContentController::class, 'update']);
 $router->add('DELETE', '/api/v1/content/{id}', [ContentController::class, 'destroy']);
 $router->add('POST', '/api/v1/content/{id}/rewrite', [ContentController::class, 'rewrite']);
+$router->add('POST', '/api/v1/content/{id}/photo', [ContentController::class, 'uploadPhoto']);
 $router->add('POST', '/api/v1/content/{id}/submit', [ContentController::class, 'submit']);
 $router->add('POST', '/api/v1/content/{id}/approve', [ContentController::class, 'approve']);
 $router->add('POST', '/api/v1/content/{id}/reject', [ContentController::class, 'reject']);

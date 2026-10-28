@@ -36,7 +36,13 @@ export const CHANNEL_ICONS: Record<string, string> = {
           <span class="channel"><i class="ti" [class]="'ti ' + channelIcon()" aria-hidden="true"></i>{{ channelLabels[item.channel] }}</span>
         </header>
 
-        <app-post-visual #visualRef [visual]="editing() ? draftVisual : item.visual" [brand]="brand" [format]="format()" />
+        <div class="visual-drop" [class.dragging]="dragging()" (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)">
+          <app-post-visual #visualRef [visual]="editing() ? draftVisual : item.visual" [brand]="brand" [format]="format()"
+                           [photoClickable]="canUploadPhoto()" (photoRequested)="photoInput.click()" />
+          @if (dragging()) { <div class="visual-overlay"><i class="ti ti-upload" aria-hidden="true"></i> Rilascia la foto qui</div> }
+          @if (uploadingPhoto()) { <div class="visual-overlay"><span class="spinner"></span> Carico la foto…</div> }
+        </div>
+        <input #photoInput type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" (change)="onPhotoSelected($event)" />
 
         <div class="caption">
           @if (item.channel === 'instagram' || item.channel === 'facebook') {
@@ -71,18 +77,25 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <label>Etichetta<input [(ngModel)]="draftVisual.badge" maxlength="24" placeholder="Novità" /></label>
           </div>
           <label>Sottotitolo grafica<input [(ngModel)]="draftVisual.subheadline" maxlength="140" /></label>
-          <div class="edit-grid">
-            <label>Stile
-              <select [(ngModel)]="draftVisual.layout">
-                @for (l of layouts; track l[0]) { <option [value]="l[0]">{{ l[1] }}</option> }
-              </select>
-            </label>
-            <label>Foto
-              <select [(ngModel)]="draftVisual.asset_id">
-                <option [ngValue]="null">— Nessuna —</option>
-                @for (a of images; track a.id) { <option [ngValue]="a.id">{{ a.original_name }}</option> }
-              </select>
-            </label>
+          <label>Stile
+            <select [(ngModel)]="draftVisual.layout">
+              @for (l of layouts; track l[0]) { <option [value]="l[0]">{{ l[1] }}</option> }
+            </select>
+          </label>
+          <div class="field-label">Foto</div>
+          <div class="photo-picker">
+            <button type="button" class="pick-tile upload" (click)="photoInput.click()" [disabled]="uploadingPhoto()" title="Carica una foto dal computer">
+              @if (uploadingPhoto()) { <span class="spinner small"></span> } @else { <i class="ti ti-upload" aria-hidden="true"></i> }
+              <span>Carica</span>
+            </button>
+            <button type="button" class="pick-tile" [class.on]="!draftVisual.asset_id" (click)="draftVisual.asset_id = null" title="Nessuna foto">
+              <i class="ti ti-photo-off" aria-hidden="true"></i><span>Nessuna</span>
+            </button>
+            @for (a of images.slice(0, 10); track a.id) {
+              <button type="button" class="pick-tile thumb" [class.on]="draftVisual.asset_id === a.id" (click)="pickPhoto(a.id)" [title]="a.original_name">
+                <app-asset-preview [assetId]="a.id" [alt]="a.original_name" />
+              </button>
+            }
           </div>
           <div class="actions">
             <button class="btn ghost small" (click)="editing.set(false)">Annulla</button>
@@ -117,6 +130,9 @@ export const CHANNEL_ICONS: Record<string, string> = {
         <div class="post-actions">
           <button class="icon-btn" (click)="copy()" aria-label="Copia testo" title="Copia testo"><i class="ti" [class]="copied() ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button>
           <button class="icon-btn" (click)="download()" aria-label="Scarica grafica" title="Scarica grafica PNG"><i class="ti ti-download" aria-hidden="true"></i></button>
+          @if (canUploadPhoto()) {
+            <button class="icon-btn" (click)="photoInput.click()" [disabled]="uploadingPhoto()" aria-label="Carica foto" title="Carica una foto per questo post"><i class="ti ti-photo-up" aria-hidden="true"></i></button>
+          }
           @if (editable()) {
             <button class="icon-btn" (click)="cycleStyle()" [disabled]="busy()" aria-label="Cambia stile" [title]="'Cambia stile (ora: ' + layoutLabels[item.visual?.layout ?? 'bold'] + ')'"><i class="ti ti-palette" aria-hidden="true"></i></button>
             <button class="icon-btn ai" (click)="rewriting.set(true); customInstruction = ''" aria-label="Riscrivi con AI" title="Riscrivi con AI"><i class="ti ti-sparkles" aria-hidden="true"></i></button>
@@ -164,10 +180,84 @@ export class PostCardComponent {
   note = '';
   customInstruction = '';
 
-  /** Immagini della libreria, con prima quelle del cliente del post. */
+  dragging = signal(false);
+  uploadingPhoto = signal(false);
+  /** Foto caricate da questa card durante la modifica, non ancora presenti nell'elenco del genitore. */
+  private uploadedHere: Asset[] = [];
+
+  /** Immagini della libreria, con prima quelle appena caricate e quelle del cliente del post. */
   get images(): Asset[] {
-    const images = this.assets.filter((a) => a.kind === 'image' && a.id !== this.brand?.logo_asset_id);
-    return [...images.filter((a) => a.brand_profile_id === this.brand?.id), ...images.filter((a) => a.brand_profile_id !== this.brand?.id)];
+    const known = new Set(this.uploadedHere.map((a) => a.id));
+    const images = this.assets.filter((a) => a.kind === 'image' && a.id !== this.brand?.logo_asset_id && !known.has(a.id));
+    return [...this.uploadedHere, ...images.filter((a) => a.brand_profile_id === this.brand?.id), ...images.filter((a) => a.brand_profile_id !== this.brand?.id)];
+  }
+
+  pickPhoto(assetId: number): void {
+    this.draftVisual.asset_id = assetId;
+    if (this.draftVisual.layout !== 'photo' && this.draftVisual.layout !== 'split') this.draftVisual.layout = 'photo';
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (!this.canUploadPhoto() || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    this.dragging.set(true);
+  }
+
+  onDrop(event: DragEvent): void {
+    if (!this.canUploadPhoto()) return;
+    event.preventDefault();
+    this.dragging.set(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) this.uploadPhoto(file);
+  }
+
+  onPhotoSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) this.uploadPhoto(file);
+  }
+
+  /**
+   * In modifica la foto va nella libreria e nella bozza (si salva con "Salva");
+   * altrimenti viene assegnata subito al post.
+   */
+  private uploadPhoto(file: File): void {
+    if (!file.type.startsWith('image/')) {
+      this.error.set('Scegli un\'immagine (PNG, JPG, WEBP o GIF).');
+      return;
+    }
+    this.uploadingPhoto.set(true);
+    this.error.set(null);
+    if (this.editing()) {
+      this.api.uploadAsset(file, this.brand?.id).subscribe({
+        next: (asset) => {
+          this.uploadingPhoto.set(false);
+          this.uploadedHere = [asset, ...this.uploadedHere];
+          this.pickPhoto(asset.id);
+        },
+        error: (err) => {
+          this.uploadingPhoto.set(false);
+          this.error.set(apiErrorMessage(err));
+        },
+      });
+      return;
+    }
+    this.api.uploadContentPhoto(this.item.id, file).subscribe({
+      next: (updated) => {
+        this.uploadingPhoto.set(false);
+        this.changed.emit(updated);
+      },
+      error: (err) => {
+        this.uploadingPhoto.set(false);
+        this.error.set(apiErrorMessage(err));
+      },
+    });
+  }
+
+  /** La foto la può fornire chiunque, cliente compreso, finché il post non è approvato. */
+  canUploadPhoto(): boolean {
+    return !!this.auth.user() && ['draft', 'rejected', 'in_review'].includes(this.item.status);
   }
 
   editable(): boolean {

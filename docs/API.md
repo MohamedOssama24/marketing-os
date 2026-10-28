@@ -67,7 +67,7 @@ Il server assegna `organization_id` e `created_by` dall'identità autenticata: i
 | `owner` | tutto; è l'unico che può aggiungere amministratori |
 | `admin` | gestire team e brand, approvare o rifiutare contenuti |
 | `editor` | creare e modificare brand, file, progetti e contenuti, generare con l'AI, inviare in revisione |
-| `viewer` | solo lettura (ad esempio il cliente) |
+| `viewer` | lettura e caricamento della propria foto sui post non ancora approvati (ad esempio il cliente) |
 
 Un'operazione non consentita risponde `403`. Una risorsa di un'altra organizzazione risponde sempre `404`, come se non esistesse.
 
@@ -134,6 +134,10 @@ Ogni contenuto può avere `visual`: `{ "headline", "subheadline", "badge", "layo
 `POST /content/{id}/rewrite` (editor+) — `{ "instruction": "Più breve" }`. Lavoro `rewrite_content`: l'AI riscrive testo e grafica (la foto scelta resta). Solo bozze o contenuti rifiutati.
 
 Stili grafici (`visual.layout`): `bold` colore pieno, `light` chiaro, `photo` foto a tutta pagina, `split` foto e colore, `offer` promessa in grande, `quote` citazione. Nelle campagne le foto del cliente vengono assegnate a rotazione ai post `photo` e `split`.
+
+`POST /content/{id}/photo` (tutti i ruoli, cliente `viewer` compreso) — `multipart/form-data` con il campo `file` (PNG, JPG, WEBP o GIF). Salva la foto nella libreria del cliente della campagna e la mette nella grafica del post; se lo stile non prevede foto passa a `photo`. Vale per bozze, contenuti rifiutati e in revisione: un post in revisione resta in revisione, gli altri tornano in bozza. È l'unica modifica consentita al ruolo `viewer`.
+
+`POST /projects/{id}/generate` accetta anche `asset_id`: un'immagine della libreria da usare nella grafica di tutte le varianti (stili `photo` e `split` alternati).
 
 ## Eliminazioni
 

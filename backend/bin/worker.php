@@ -156,13 +156,22 @@ $handlers = [
         $variants = MarketingAis::make()->contentVariants($brand, $project, $payload);
 
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)');
+        $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, visual, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
         $ids = [];
-        foreach ($variants as $variant) {
+        // Con una foto le varianti alternano "Foto" e "Foto e colore"; senza, colore pieno e chiaro.
+        $assetId = $payload['asset_id'] ?? null;
+        $layouts = $assetId ? ['photo', 'split'] : ['bold', 'light'];
+        foreach ($variants as $i => $variant) {
+            $title = mb_substr(trim((string)$variant['title']) ?: 'Senza titolo', 0, 220);
+            $visual = ContentController::visual([
+                'headline' => mb_substr($title, 0, 60), 'subheadline' => '', 'badge' => '',
+                'layout' => $layouts[$i % 2], 'asset_id' => $assetId,
+            ], $orgId, false);
             $stmt->execute([
                 $orgId, $project['id'], $job['created_by'], $payload['channel'], $payload['content_type'],
-                mb_substr(trim((string)$variant['title']) ?: 'Senza titolo', 0, 220),
+                $title,
                 formatBody($variant),
+                json_encode($visual, JSON_UNESCAPED_UNICODE),
                 $job['id'],
             ]);
             $ids[] = (int)$pdo->lastInsertId();

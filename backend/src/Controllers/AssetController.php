@@ -40,6 +40,20 @@ final class AssetController
     public static function store(): never
     {
         $user = Auth::userWithRole(Auth::EDITORS);
+        $brandId = Http::optionalInt($_POST, 'brand_profile_id');
+        if ($brandId !== null && !Tenant::find('brand_profiles', $brandId, $user['organization_id'], 'id')) {
+            Http::validationError('Il cliente non esiste nella tua organizzazione.');
+        }
+        $id = self::saveUpload($user, $brandId);
+        Http::json(['data' => Tenant::findOrFail('assets', $id, $user['organization_id'], self::COLUMNS)], 201);
+    }
+
+    /**
+     * Valida e salva il file inviato nel campo "file". Con $imagesOnly accetta solo immagini.
+     * Il cliente ($brandId) deve essere già stato verificato dal chiamante.
+     */
+    public static function saveUpload(array $user, ?int $brandId, bool $imagesOnly = false): int
+    {
         $file = $_FILES['file'] ?? null;
         if (!is_array($file) || is_array($file['error'] ?? null)) Http::validationError("Invia un solo file nel campo 'file'.");
         if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE) Http::validationError('Il file supera la dimensione massima consentita.');
@@ -50,10 +64,7 @@ final class AssetController
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: '';
         if (!isset(self::ALLOWED[$mime])) Http::validationError('Formato non supportato. Usa PNG, JPG, WEBP, GIF, MP4, MOV, WEBM o PDF.');
         [$kind, $extension] = self::ALLOWED[$mime];
-        $brandId = Http::optionalInt($_POST, 'brand_profile_id');
-        if ($brandId !== null && !Tenant::find('brand_profiles', $brandId, $user['organization_id'], 'id')) {
-            Http::validationError('Il cliente non esiste nella tua organizzazione.');
-        }
+        if ($imagesOnly && $kind !== 'image') Http::validationError('Per la grafica del post serve un\'immagine (PNG, JPG, WEBP o GIF).');
 
         [$relative, $target] = self::newPath($user['organization_id'], $extension);
         if (!move_uploaded_file($file['tmp_name'], $target)) throw new RuntimeException('Impossibile salvare il file caricato.');
@@ -61,7 +72,7 @@ final class AssetController
         $originalName = mb_substr(basename((string)$file['name']), 0, 255) ?: 'file.' . $extension;
         $id = self::insert($user['organization_id'], $user['id'], $kind, $originalName, $mime, (int)$file['size'], $relative, $brandId);
         Audit::log($user, 'asset.uploaded', 'asset', $id);
-        Http::json(['data' => Tenant::findOrFail('assets', $id, $user['organization_id'], self::COLUMNS)], 201);
+        return $id;
     }
 
     /** Salva un'immagine ottenuta dal server (ad esempio il logo letto dal sito del cliente). */

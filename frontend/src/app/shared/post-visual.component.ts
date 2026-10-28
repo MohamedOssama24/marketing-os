@@ -1,4 +1,4 @@
-import { Component, ElementRef, Input, inject } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, Output, inject } from '@angular/core';
 import { toPng } from 'html-to-image';
 import { Brand, Visual } from '../core/models';
 import { AssetPreviewComponent } from './asset-preview.component';
@@ -35,7 +35,9 @@ function ensureFont(family: string | null | undefined): string | null {
           @if (visual?.asset_id) {
             <app-asset-preview [assetId]="visual!.asset_id!" />
           } @else {
-            <div class="pv-media-empty" [style.background]="tint()" [style.color]="ink()"><i class="ti ti-photo-plus" aria-hidden="true"></i><span>Scegli una foto</span></div>
+            <button type="button" class="pv-media-empty" [class.clickable]="photoClickable" [disabled]="!photoClickable" [style.background]="tint()" [style.color]="ink()" (click)="photoRequested.emit()">
+              <i class="ti ti-photo-plus" aria-hidden="true"></i><span>{{ photoClickable ? 'Carica una foto' : 'Foto da scegliere' }}</span>
+            </button>
           }
         </div>
       }
@@ -69,7 +71,8 @@ function ensureFont(family: string | null | undefined): string | null {
     .format-story { aspect-ratio: 9 / 16; }
 
     .pv-media { position: absolute; inset: 0; z-index: 0; }
-    .pv-media-empty { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2cqw; font-size: 4cqw; i { font-size: 12cqw; } }
+    .pv-media-empty { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2cqw; font: inherit; font-size: 4cqw; border: none; i { font-size: 12cqw; }
+      &.clickable { cursor: pointer; &:hover span { text-decoration: underline; } } }
     .pv-top { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: flex-start; gap: 3cqw; }
     .pv-logo { width: 14cqw; height: 14cqw; border-radius: 3cqw; overflow: hidden; background: #fff; display: grid; place-items: center; flex-shrink: 0; box-shadow: 0 1cqw 3cqw rgba(0,0,0,0.12); }
     .pv-logo-text { font-weight: 800; font-size: 7cqw; }
@@ -110,6 +113,9 @@ export class PostVisualComponent {
   @Input() brand: Brand | null = null;
   /** square (1:1), portrait (4:5) o story (9:16) */
   @Input() format: 'square' | 'portrait' | 'story' = 'square';
+  /** Il riquadro "foto mancante" diventa un pulsante per caricarne una. */
+  @Input() photoClickable = false;
+  @Output() photoRequested = new EventEmitter<void>();
 
   private host = inject(ElementRef<HTMLElement>);
 

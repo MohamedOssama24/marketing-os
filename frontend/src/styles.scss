@@ -257,6 +257,20 @@ legend { font-weight: 500; font-size: 0.86rem; margin-bottom: 6px; }
 .quick-picks { display: flex; flex-wrap: wrap; gap: 6px; .chip { font-size: 0.8rem; padding: 5px 10px; } }
 .rewrite-custom { display: flex; gap: 6px; input { flex: 1; min-width: 0; } }
 
+/* Foto del post: trascinamento e selettore */
+.visual-drop { position: relative; &.dragging { outline: 3px dashed var(--primary); outline-offset: -3px; } }
+.visual-overlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(23, 24, 42, 0.55); color: #fff; font-weight: 600; font-size: 0.9rem; i { font-size: 22px; } }
+.photo-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.pick-tile {
+  aspect-ratio: 1; border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; padding: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; font-size: 0.72rem; color: var(--muted);
+  i { font-size: 18px; }
+  &.upload { border-style: dashed; color: var(--primary); border-color: #cfc9f7; background: var(--primary-soft); }
+  &.on { border: 2px solid var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  &:disabled { opacity: 0.6; cursor: wait; }
+}
+
 /* Scheda cliente: obiettivi suggeriti, foto, eliminazione */
 .goal-field { display: flex; flex-direction: column; gap: 6px; }
 .goal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; .link-btn { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; } }

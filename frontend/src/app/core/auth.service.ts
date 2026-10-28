@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, catchError, of, tap } from 'rxjs';
 import { API_URL, AuthResponse, User } from './models';
+import { ApiService } from './api.service';
 
 const TOKEN_KEY = 'mos_token';
 
@@ -10,6 +11,7 @@ const TOKEN_KEY = 'mos_token';
 export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
+  private api = inject(ApiService);
 
   private readonly tokenSignal = signal<string | null>(this.readToken());
   readonly user = signal<User | null>(null);
@@ -56,6 +58,7 @@ export class AuthService {
   clearSession(): void {
     this.tokenSignal.set(null);
     this.user.set(null);
+    this.api.clearCache();
     try { localStorage.removeItem(TOKEN_KEY); } catch {}
   }
 

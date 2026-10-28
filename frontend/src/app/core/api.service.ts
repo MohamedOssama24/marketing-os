@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, filter, map, switchMap, take, timer } from 'rxjs';
+import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
   API_URL, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, TeamMember, Visual,
@@ -65,21 +65,52 @@ export class ApiService {
 
   // Libreria file
   assets = (brandId?: number) => this.get<Asset[]>(brandId ? `/assets?brand_id=${brandId}` : '/assets');
-  deleteAsset = (id: number) => this.delete(`/assets/${id}`);
+  deleteAsset = (id: number) => {
+    this.blobCache.delete(id);
+    return this.delete(`/assets/${id}`);
+  };
   uploadAsset(file: File, brandId?: number): Observable<Asset> {
     const form = new FormData();
     form.append('file', file);
     if (brandId) form.append('brand_profile_id', String(brandId));
     return this.post<Asset>('/assets', form);
   }
-  /** Il file richiede il token, quindi si scarica come blob e si mostra con un object URL. */
-  assetBlob = (id: number) => this.http.get(`${API_URL}/assets/${id}/file`, { responseType: 'blob' });
+  /**
+   * Il file richiede il token, quindi si scarica come blob e si mostra con un object URL.
+   * I file non cambiano mai: ogni id si scarica una volta sola anche se compare in molte anteprime.
+   */
+  assetBlob(id: number): Observable<Blob> {
+    let blob = this.blobCache.get(id);
+    if (!blob) {
+      blob = this.http.get(`${API_URL}/assets/${id}/file`, { responseType: 'blob' }).pipe(
+        catchError((err) => {
+          this.blobCache.delete(id);
+          return throwError(() => err);
+        }),
+        shareReplay(1),
+      );
+      this.blobCache.set(id, blob);
+    }
+    return blob;
+  }
+  private blobCache = new Map<number, Observable<Blob>>();
+
+  /** Da chiamare all'uscita, così un altro utente sullo stesso browser non riceve file in cache. */
+  clearCache(): void {
+    this.blobCache.clear();
+  }
 
   // Contenuti
   content = (projectId: number) => this.get<ContentItem[]>(`/projects/${projectId}/content`);
   contentItem = (id: number) => this.get<ContentItem>(`/content/${id}`);
   deleteContent = (id: number) => this.delete(`/content/${id}`);
   rewriteContent = (id: number, instruction: string) => this.post<Job>(`/content/${id}/rewrite`, { instruction });
+  /** Carica una foto personalizzata nella grafica del post (finisce anche nella libreria del cliente). */
+  uploadContentPhoto(id: number, file: File): Observable<ContentItem> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.post<ContentItem>(`/content/${id}/photo`, form);
+  }
   createContent = (projectId: number, c: Pick<ContentItem, 'channel' | 'content_type' | 'title' | 'body'>) =>
     this.post<ContentItem>(`/projects/${projectId}/content`, c);
   updateContent = (id: number, c: Partial<Pick<ContentItem, 'channel' | 'content_type' | 'title' | 'body'>> & { visual?: Visual | null }) =>

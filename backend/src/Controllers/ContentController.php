@@ -41,6 +41,34 @@ final class ContentController
         Http::json(['data' => ['deleted' => true]]);
     }
 
+    /**
+     * Carica una foto personalizzata per il post: va nella libreria del cliente e nella grafica.
+     * Se lo stile attuale non prevede foto, passa a "photo".
+     * È consentito a tutti i ruoli, cliente (viewer) compreso, così può fornire la sua foto mentre rivede il post:
+     * un post in revisione resta in revisione, una bozza o un rifiutato torna in bozza.
+     */
+    public static function uploadPhoto(int $id): never
+    {
+        $user = Auth::user();
+        $item = self::find($id, $user);
+        if (!in_array($item['status'], ['draft', 'rejected', 'in_review'], true)) {
+            Http::json(['error' => 'invalid_state', 'message' => 'La foto si può cambiare solo su bozze, contenuti in revisione o da rivedere.'], 409);
+        }
+        $project = Tenant::findOrFail('projects', (int)$item['project_id'], $user['organization_id'], 'brand_profile_id');
+        $assetId = AssetController::saveUpload($user, $project['brand_profile_id'] === null ? null : (int)$project['brand_profile_id'], true);
+
+        $visual = $item['visual'] ?? ['headline' => mb_substr($item['title'], 0, 60), 'subheadline' => '', 'badge' => '', 'layout' => 'photo'];
+        if (!in_array($visual['layout'] ?? '', ['photo', 'split'], true)) $visual['layout'] = 'photo';
+        $visual['asset_id'] = $assetId;
+        $visual = self::visual($visual, $user['organization_id'], false);
+
+        $status = $item['status'] === 'in_review' ? 'in_review' : 'draft';
+        $stmt = Database::connection()->prepare('UPDATE content_items SET visual=?, status=? WHERE id=? AND organization_id=?');
+        $stmt->execute([json_encode($visual, JSON_UNESCAPED_UNICODE), $status, $id, $user['organization_id']]);
+        Audit::log($user, 'content.photo_uploaded', 'content_item', $id);
+        Http::json(['data' => self::find($id, $user)]);
+    }
+
     /** Fa riscrivere il post all'AI seguendo un'istruzione. Solo bozze o contenuti rifiutati. */
     public static function rewrite(int $id): never
     {
@@ -196,6 +224,8 @@ final class ContentController
             'content_type' => Http::optionalString($data, 'content_type', 80) ?? 'post',
             'brief' => Http::requiredString($data, 'brief', 2000),
             'variants' => $variants,
+            // Foto facoltativa da usare nella grafica di tutte le varianti.
+            'asset_id' => self::visual(['layout' => 'photo', 'asset_id' => $data['asset_id'] ?? null], $user['organization_id'])['asset_id'],
         ];
         $job = Jobs::enqueue($user, 'generate_content', $payload);
         Audit::log($user, 'content.generation_requested', 'job', (int)$job['id']);

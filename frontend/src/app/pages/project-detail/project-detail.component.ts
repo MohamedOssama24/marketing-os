@@ -116,6 +116,24 @@ const CAMPAIGN_STEPS = ['Definisco la strategia', 'Pianifico il calendario', 'Sc
           <label>Tipo<input formControlName="content_type" placeholder="post, carosello, reel, articolo" /></label>
           <label class="full">Brief *<textarea rows="3" formControlName="brief" placeholder="Lancio della torta zucca e castagne, disponibile fino a fine novembre."></textarea></label>
           <label>Varianti<input type="number" min="1" max="5" formControlName="variants" /></label>
+          <div class="full">
+            <div class="field-label">Foto per la grafica <span class="muted small">(facoltativa)</span></div>
+            <div class="photo-picker">
+              <button type="button" class="pick-tile upload" (click)="genPhotoInput.click()" [disabled]="uploadingGenPhoto()" title="Carica una foto dal computer">
+                @if (uploadingGenPhoto()) { <span class="spinner small"></span> } @else { <i class="ti ti-upload" aria-hidden="true"></i> }
+                <span>Carica</span>
+              </button>
+              <button type="button" class="pick-tile" [class.on]="!genForm.value.asset_id" (click)="genForm.patchValue({ asset_id: null })" title="Nessuna foto">
+                <i class="ti ti-photo-off" aria-hidden="true"></i><span>Nessuna</span>
+              </button>
+              @for (a of clientPhotos().slice(0, 10); track a.id) {
+                <button type="button" class="pick-tile thumb" [class.on]="genForm.value.asset_id === a.id" (click)="genForm.patchValue({ asset_id: a.id })" [title]="a.original_name">
+                  <app-asset-preview [assetId]="a.id" [alt]="a.original_name" />
+                </button>
+              }
+            </div>
+            <input #genPhotoInput type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" (change)="uploadGenPhoto($event)" />
+          </div>
           <div class="actions bottom">
             <button class="btn primary" type="submit" [disabled]="genForm.invalid || generating()">{{ generating() ? 'Generazione in corso…' : 'Genera bozze' }}</button>
           </div>
@@ -177,7 +195,35 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     content_type: ['post', [Validators.required, Validators.maxLength(80)]],
     brief: ['', [Validators.required, Validators.maxLength(2000)]],
     variants: [3, [Validators.required, Validators.min(1), Validators.max(5)]],
+    asset_id: [null as number | null],
   });
+
+  uploadingGenPhoto = signal(false);
+  /** Foto della libreria, con prima quelle del cliente della campagna (logo escluso). */
+  clientPhotos = computed(() => {
+    const brand = this.brand();
+    const images = this.assets().filter((a) => a.kind === 'image' && a.id !== brand?.logo_asset_id);
+    return [...images.filter((a) => a.brand_profile_id === brand?.id), ...images.filter((a) => a.brand_profile_id !== brand?.id)];
+  });
+
+  uploadGenPhoto(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.uploadingGenPhoto.set(true);
+    this.api.uploadAsset(file, this.brand()?.id).subscribe({
+      next: (asset) => {
+        this.uploadingGenPhoto.set(false);
+        this.assets.update((list) => [asset, ...list]);
+        this.genForm.patchValue({ asset_id: asset.id });
+      },
+      error: (err) => {
+        this.uploadingGenPhoto.set(false);
+        this.genError.set(apiErrorMessage(err));
+      },
+    });
+  }
 
   private get projectId(): number {
     return Number(this.route.snapshot.paramMap.get('id'));

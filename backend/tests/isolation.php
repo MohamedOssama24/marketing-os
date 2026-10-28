@@ -194,6 +194,39 @@ $dashB = req('GET', '/dashboard', $b['token'])[1]['data'] ?? [];
 check('Dashboard di A con clienti e approvazioni', ($dashA['clients'] ?? 0) === 1 && ($dashA['pending_approval'] ?? 0) >= 1, json_encode($dashA));
 check('Dashboard di B senza dati di A', ($dashB['pending_approval'] ?? -1) === 0 && ($dashB['active_campaigns'] ?? -1) === 0, json_encode($dashB));
 
+echo "\nFoto personalizzata del post\n";
+$photoPost = $posts[2];
+$uploaded = req('POST', "/content/{$photoPost['id']}/photo", $a['token'], null, ['file' => new CURLFile($pngPath, 'image/png', 'prodotto.png')]);
+expectStatus('A carica una foto sul post', $uploaded, 200);
+$photoAsset = $uploaded[1]['data']['visual']['asset_id'] ?? null;
+check('La grafica usa la foto con uno stile fotografico', $photoAsset !== null && in_array($uploaded[1]['data']['visual']['layout'] ?? '', ['photo', 'split'], true), $uploaded[2]);
+check('La foto finisce nella libreria del cliente', in_array($photoAsset, array_column(req('GET', "/assets?brand_id={$brandA['id']}", $a['token'])[1]['data'] ?? [], 'id'), true));
+expectStatus('B non carica foto sui post di A', req('POST', "/content/{$photoPost['id']}/photo", $b['token'], null, ['file' => new CURLFile($pngPath, 'image/png', 'x.png')]), 404);
+expectStatus('Un PDF o testo non è una foto valida', req('POST', "/content/{$photoPost['id']}/photo", $a['token'], null, ['file' => new CURLFile($txtPath, 'image/png', 'finto.png')]), 422);
+
+// Il cliente (viewer) può fornire la sua foto, anche mentre il post è in revisione.
+$viewerDraft = req('POST', "/content/{$photoPost['id']}/photo", $viewer, null, ['file' => new CURLFile($pngPath, 'image/png', 'foto-cliente.png')]);
+check('Il cliente carica una foto su una bozza', $viewerDraft[0] === 200 && ($viewerDraft[1]['data']['visual']['asset_id'] ?? null) !== $photoAsset, $viewerDraft[2]);
+$viewerReview = req('POST', "/content/{$post['id']}/photo", $viewer, null, ['file' => new CURLFile($pngPath, 'image/png', 'foto-cliente.png')]);
+check('Il cliente carica una foto su un post in revisione, che resta in revisione', $viewerReview[0] === 200 && ($viewerReview[1]['data']['status'] ?? '') === 'in_review', $viewerReview[2]);
+expectStatus('Il cliente non modifica i testi', req('PATCH', "/content/{$photoPost['id']}", $viewer, ['title' => 'X']), 403);
+expectStatus('Il cliente non carica file liberi in libreria', req('POST', '/assets', $viewer, null, ['file' => new CURLFile($pngPath, 'image/png', 'x.png')]), 403);
+$approvedPost = $posts[3];
+req('POST', "/content/{$approvedPost['id']}/submit", $a['token']);
+req('POST', "/content/{$approvedPost['id']}/approve", $a['token']);
+expectStatus('Non si cambia la foto di un post approvato', req('POST', "/content/{$approvedPost['id']}/photo", $viewer, null, ['file' => new CURLFile($pngPath, 'image/png', 'x.png')]), 409);
+
+$variantJob = req('POST', "/projects/{$campaignId}/generate", $a['token'], ['channel' => 'instagram', 'brief' => 'Nuovo prodotto', 'variants' => 2, 'asset_id' => $photoAsset]);
+expectStatus('Varianti con foto avviate (202)', $variantJob, 202);
+$variantResult = waitJob((int)($variantJob[1]['data']['id'] ?? 0), $a['token']);
+$variantIds = $variantResult['result']['content_ids'] ?? [];
+$variantsWithPhoto = array_filter($variantIds, function ($id) use ($a, $photoAsset) {
+    $v = req('GET', "/content/{$id}", $a['token'])[1]['data']['visual'] ?? [];
+    return ($v['asset_id'] ?? null) === $photoAsset && in_array($v['layout'] ?? '', ['photo', 'split'], true);
+});
+check('Le varianti usano la foto scelta', count($variantIds) === 2 && count($variantsWithPhoto) === 2, json_encode($variantResult));
+expectStatus('Varianti con una foto di B rifiutate', req('POST', "/projects/{$campaignId}/generate", $a['token'], ['channel' => 'instagram', 'brief' => 'X', 'asset_id' => $assetB['id']]), 422);
+
 echo "\nObiettivi suggeriti, riscrittura ed eliminazioni\n";
 $goalsJob = req('POST', "/brands/{$brandA['id']}/goal-suggestions", $a['token'], []);
 expectStatus('A chiede obiettivi suggeriti (202)', $goalsJob, 202);

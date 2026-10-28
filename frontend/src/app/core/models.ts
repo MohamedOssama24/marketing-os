@@ -219,6 +219,8 @@ export interface GenerateRequest {
   content_type: string;
   brief: string;
   variants: number;
+  /** Foto da usare nella grafica delle varianti */
+  asset_id?: number | null;
 }
 
 /** Estrae il messaggio d'errore restituito dalle API ({ error, message }). */
