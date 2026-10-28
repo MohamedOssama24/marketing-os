@@ -127,6 +127,24 @@ Durata 1–4 settimane, 1–5 post a settimana, massimo 16 post; canali tra `ins
 
 Ogni contenuto può avere `visual`: `{ "headline", "subheadline", "badge", "layout": "bold" | "light" | "photo", "asset_id" }`. Si modifica con `PATCH /content/{id}`; `asset_id` deve essere un'immagine della libreria dell'organizzazione.
 
+`POST /brands/{id}/analyze` (editor+) — rilegge il sito del cliente (o `{ "url" }` indicato) e aggiorna il brand kit: il nome resta, i campi trovati sostituiscono i precedenti, logo e foto mancanti vengono importati.
+
+`POST /brands/{id}/goal-suggestions` (editor+) — lavoro `suggest_goals`; a lavoro finito `result.goals` contiene 4 obiettivi `{ title, goal }`.
+
+`POST /content/{id}/rewrite` (editor+) — `{ "instruction": "Più breve" }`. Lavoro `rewrite_content`: l'AI riscrive testo e grafica (la foto scelta resta). Solo bozze o contenuti rifiutati.
+
+Stili grafici (`visual.layout`): `bold` colore pieno, `light` chiaro, `photo` foto a tutta pagina, `split` foto e colore, `offer` promessa in grande, `quote` citazione. Nelle campagne le foto del cliente vengono assegnate a rotazione ai post `photo` e `split`.
+
+## Eliminazioni
+
+- `DELETE /content/{id}` (editor+) — un post, se non pubblicato.
+- `DELETE /projects/{id}` (owner, admin) — una campagna con tutti i suoi contenuti.
+- `DELETE /brands/{id}` (owner, admin) — un cliente; con `?with_campaigns=1` anche le sue campagne e i loro contenuti. Foto e file restano nella libreria.
+
+## Libreria file per cliente
+
+`POST /assets` accetta il campo facoltativo `brand_profile_id` per collegare il file a un cliente. `GET /assets?brand_id={id}` restituisce solo i file di quel cliente.
+
 ## Dashboard, calendario e approvazioni
 
 `GET /dashboard` — numeri principali (clienti, campagne attive, post del mese, contenuti da approvare, lavori AI del mese) e i post della settimana corrente.

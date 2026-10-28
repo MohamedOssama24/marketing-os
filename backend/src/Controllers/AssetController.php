@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class AssetController
 {
-    private const COLUMNS = 'id, kind, original_name, mime_type, size_bytes, created_at';
+    private const COLUMNS = 'id, brand_profile_id, kind, original_name, mime_type, size_bytes, created_at';
 
     /** Tipi accettati: il MIME viene ricavato dal contenuto del file, non dal nome. */
     private const ALLOWED = [
@@ -17,12 +17,24 @@ final class AssetController
         'application/pdf' => ['document', 'pdf'],
     ];
 
+    /** Elenco dei file; con ?brand_id=N solo quelli del cliente indicato. */
     public static function index(): never
     {
         $user = Auth::user();
-        $stmt = Database::connection()->prepare('SELECT ' . self::COLUMNS . ' FROM assets WHERE organization_id=? ORDER BY created_at DESC LIMIT 200');
-        $stmt->execute([$user['organization_id']]);
+        $brandId = Http::optionalInt($_GET, 'brand_id');
+        $sql = 'SELECT ' . self::COLUMNS . ' FROM assets WHERE organization_id=?' . ($brandId !== null ? ' AND brand_profile_id=?' : '') . ' ORDER BY created_at DESC LIMIT 300';
+        $stmt = Database::connection()->prepare($sql);
+        $stmt->execute($brandId !== null ? [$user['organization_id'], $brandId] : [$user['organization_id']]);
         Http::json(['data' => $stmt->fetchAll()]);
+    }
+
+    /** Foto del cliente (escluso il logo), usate per le grafiche dei post. */
+    public static function brandPhotoIds(int $organizationId, int $brandId): array
+    {
+        $stmt = Database::connection()->prepare("SELECT a.id FROM assets a JOIN brand_profiles b ON b.id=a.brand_profile_id AND b.organization_id=a.organization_id
+            WHERE a.organization_id=? AND a.brand_profile_id=? AND a.kind='image' AND (b.logo_asset_id IS NULL OR a.id<>b.logo_asset_id) ORDER BY a.id");
+        $stmt->execute([$organizationId, $brandId]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
     public static function store(): never
@@ -38,24 +50,28 @@ final class AssetController
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: '';
         if (!isset(self::ALLOWED[$mime])) Http::validationError('Formato non supportato. Usa PNG, JPG, WEBP, GIF, MP4, MOV, WEBM o PDF.');
         [$kind, $extension] = self::ALLOWED[$mime];
+        $brandId = Http::optionalInt($_POST, 'brand_profile_id');
+        if ($brandId !== null && !Tenant::find('brand_profiles', $brandId, $user['organization_id'], 'id')) {
+            Http::validationError('Il cliente non esiste nella tua organizzazione.');
+        }
 
         [$relative, $target] = self::newPath($user['organization_id'], $extension);
         if (!move_uploaded_file($file['tmp_name'], $target)) throw new RuntimeException('Impossibile salvare il file caricato.');
 
         $originalName = mb_substr(basename((string)$file['name']), 0, 255) ?: 'file.' . $extension;
-        $id = self::insert($user['organization_id'], $user['id'], $kind, $originalName, $mime, (int)$file['size'], $relative);
+        $id = self::insert($user['organization_id'], $user['id'], $kind, $originalName, $mime, (int)$file['size'], $relative, $brandId);
         Audit::log($user, 'asset.uploaded', 'asset', $id);
         Http::json(['data' => Tenant::findOrFail('assets', $id, $user['organization_id'], self::COLUMNS)], 201);
     }
 
     /** Salva un'immagine ottenuta dal server (ad esempio il logo letto dal sito del cliente). */
-    public static function saveBytes(int $organizationId, ?int $userId, string $bytes, string $originalName): ?int
+    public static function saveBytes(int $organizationId, ?int $userId, string $bytes, string $originalName, ?int $brandId = null): ?int
     {
         $mime = (new finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: '';
         if (!isset(self::ALLOWED[$mime]) || self::ALLOWED[$mime][0] !== 'image') return null;
         [$relative, $target] = self::newPath($organizationId, self::ALLOWED[$mime][1]);
         if (file_put_contents($target, $bytes) === false) throw new RuntimeException('Impossibile salvare il file.');
-        return self::insert($organizationId, $userId, 'image', mb_substr($originalName, 0, 255), $mime, strlen($bytes), $relative);
+        return self::insert($organizationId, $userId, 'image', mb_substr($originalName, 0, 255), $mime, strlen($bytes), $relative, $brandId);
     }
 
     /** @return array{0: string, 1: string} percorso relativo e assoluto di un nuovo file */
@@ -69,11 +85,11 @@ final class AssetController
         return [$relative, $target];
     }
 
-    private static function insert(int $organizationId, ?int $userId, string $kind, string $name, string $mime, int $size, string $relative): int
+    private static function insert(int $organizationId, ?int $userId, string $kind, string $name, string $mime, int $size, string $relative, ?int $brandId = null): int
     {
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('INSERT INTO assets (organization_id, uploaded_by, kind, original_name, mime_type, size_bytes, storage_path) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $stmt->execute([$organizationId, $userId, $kind, $name, $mime, $size, $relative]);
+        $stmt = $pdo->prepare('INSERT INTO assets (organization_id, uploaded_by, brand_profile_id, kind, original_name, mime_type, size_bytes, storage_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt->execute([$organizationId, $userId, $brandId, $kind, $name, $mime, $size, $relative]);
         return (int)$pdo->lastInsertId();
     }
 

@@ -29,7 +29,7 @@ const CAMPAIGN_STEPS = ['Definisco la strategia', 'Pianifico il calendario', 'Sc
         <div class="campaign-title">
           @if (brand(); as b) {
             <a class="client-logo" [routerLink]="['/clients', b.id]" [style.background]="b.primary_color ?? '#5B4BDB'" [title]="b.name">
-              @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" /> } @else { {{ b.name.charAt(0) }} }
+              @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" fit="contain" /> } @else { {{ b.name.charAt(0) }} }
             </a>
           }
           <div>
@@ -46,6 +46,9 @@ const CAMPAIGN_STEPS = ['Definisco la strategia', 'Pianifico il calendario', 'Sc
             <select [ngModel]="p.status" (ngModelChange)="update({ status: $event })" aria-label="Stato della campagna">
               @for (s of projectStatuses; track s[0]) { <option [value]="s[0]">{{ s[1] }}</option> }
             </select>
+            @if (auth.canManage()) {
+              <button class="icon-btn danger" (click)="removeCampaign(p)" aria-label="Elimina campagna" title="Elimina campagna"><i class="ti ti-trash" aria-hidden="true"></i></button>
+            }
           </div>
         }
       </div>
@@ -121,7 +124,7 @@ const CAMPAIGN_STEPS = ['Definisco la strategia', 'Pianifico il calendario', 'Sc
 
       <div class="feed">
         @for (c of visibleContent(); track c.id) {
-          <app-post-card [item]="c" [brand]="brand()" [assets]="assets()" (changed)="replace($event)" />
+          <app-post-card [item]="c" [brand]="brand()" [assets]="assets()" (changed)="replace($event)" (removed)="removePost($event)" />
         } @empty {
           @if (!planning()) {
             <div class="card empty">
@@ -200,6 +203,18 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
 
   replace(updated: ContentItem): void {
     this.content.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+  }
+
+  removePost(id: number): void {
+    this.content.update((list) => list.filter((c) => c.id !== id));
+  }
+
+  removeCampaign(project: Project): void {
+    if (!confirm(`Eliminare la campagna "${project.name}" e tutti i suoi ${this.content().length} contenuti? L'operazione non si può annullare.`)) return;
+    this.api.deleteProject(project.id).subscribe({
+      next: () => this.router.navigate(project.brand_profile_id ? ['/clients', project.brand_profile_id] : ['/campaigns']),
+      error: (err) => this.error.set(apiErrorMessage(err)),
+    });
   }
 
   update(changes: { status?: string; brand_profile_id?: number | null }): void {

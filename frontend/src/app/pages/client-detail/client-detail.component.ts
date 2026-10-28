@@ -1,10 +1,12 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { finalize, switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { ApiService } from '../../core/api.service';
-import { Brand, CHANNEL_LABELS, Channel, Project, apiErrorMessage } from '../../core/models';
+import { Asset, Brand, CHANNEL_LABELS, Channel, GoalSuggestion, Project, apiErrorMessage } from '../../core/models';
 import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { BrandFormComponent } from '../../shared/brand-form.component';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
@@ -24,15 +26,34 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
       <app-brand-form (saved)="created($event)" (cancelled)="router.navigate(['/clients'])" />
     } @else {
     @if (brand(); as b) {
-      @if (fromSite()) {
+      @if (notice()) {
+        <div class="notice success"><i class="ti ti-circle-check" aria-hidden="true"></i> {{ notice() }}</div>
+      } @else if (fromSite()) {
         <div class="notice success"><i class="ti ti-circle-check" aria-hidden="true"></i> Brand kit creato dal sito. Controllalo e correggi se serve, poi genera la prima campagna.</div>
+      }
+
+      @if (deleting()) {
+        <div class="card danger-zone">
+          <h2><i class="ti ti-alert-triangle" aria-hidden="true"></i> Eliminare {{ b.name }}?</h2>
+          <p class="muted">Il brand kit viene eliminato definitivamente. Foto e file restano nella libreria.</p>
+          @if (campaigns().length) {
+            <label class="check-row">
+              <input type="checkbox" [(ngModel)]="deleteCampaigns" />
+              Elimina anche {{ campaigns().length === 1 ? 'la sua campagna' : 'le sue ' + campaigns().length + ' campagne' }} e tutti i post
+            </label>
+          }
+          <div class="actions">
+            <button class="btn ghost small" (click)="deleting.set(false)">Annulla</button>
+            <button class="btn danger small" (click)="remove(b)">Elimina cliente</button>
+          </div>
+        </div>
       }
 
       <section class="client-hero">
         <div class="client-hero-band" [style.background]="b.primary_color ?? '#5B4BDB'"></div>
         <div class="client-hero-body">
           <span class="client-logo big">
-            @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" [alt]="'Logo ' + b.name" /> } @else { {{ b.name.charAt(0) }} }
+            @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" fit="contain" [alt]="'Logo ' + b.name" /> } @else { {{ b.name.charAt(0) }} }
           </span>
           <div class="client-hero-text">
             <h1>{{ b.name }}</h1>
@@ -47,7 +68,12 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
           </div>
           @if (auth.canEdit() && !editing()) {
             <div class="actions">
-              @if (auth.canManage()) { <button class="btn ghost small" (click)="remove(b)">Elimina</button> }
+              @if (auth.canManage()) { <button class="btn ghost small" (click)="deleting.set(true)"><i class="ti ti-trash" aria-hidden="true"></i> Elimina</button> }
+              @if (b.website_url) {
+                <button class="btn ghost small" (click)="reanalyze(b)" [disabled]="reanalyzing()">
+                  @if (reanalyzing()) { <span class="spinner small"></span> Analisi in corso… } @else { <i class="ti ti-refresh" aria-hidden="true"></i> Rianalizza sito }
+                </button>
+              }
               <button class="btn ghost small" (click)="editing.set(true)"><i class="ti ti-pencil" aria-hidden="true"></i> Modifica</button>
             </div>
           }
@@ -58,15 +84,41 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
         <app-brand-form [brand]="b" (saved)="brand.set($event); editing.set(false)" (cancelled)="editing.set(false)" />
       } @else {
         <div class="two-col">
-          <section class="card kit">
-            <h2>Brand kit</h2>
-            @for (f of kitFields; track f[0]) {
-              <div class="kit-row">
-                <p class="kit-label">{{ f[1] }}</p>
-                <p class="kit-value" [class.muted]="!b[f[0]]">{{ b[f[0]] || 'Non indicato' }}</p>
+          <div class="side-col">
+            <section class="card kit">
+              <h2>Brand kit</h2>
+              @for (f of kitFields; track f[0]) {
+                <div class="kit-row">
+                  <p class="kit-label">{{ f[1] }}</p>
+                  <p class="kit-value" [class.muted]="!b[f[0]]">{{ b[f[0]] || 'Non indicato' }}</p>
+                </div>
+              }
+            </section>
+
+            <section class="card">
+              <div class="strategy-head">
+                <h2><i class="ti ti-photo" aria-hidden="true"></i> Foto del cliente</h2>
+                @if (auth.canEdit()) {
+                  <label class="btn ghost small upload-btn">
+                    @if (uploading()) { <span class="spinner small"></span> } @else { <i class="ti ti-upload" aria-hidden="true"></i> }
+                    Carica
+                    <input type="file" multiple hidden accept="image/png,image/jpeg,image/webp,image/gif" (change)="upload($event, b)" />
+                  </label>
+                }
               </div>
-            }
-          </section>
+              <p class="muted small">Le foto finiscono a rotazione nei post con stile "Foto" e "Foto e colore".</p>
+              <div class="photo-grid">
+                @for (a of photos(); track a.id) {
+                  <div class="photo-thumb" [class.is-logo]="a.id === b.logo_asset_id" [title]="a.original_name">
+                    <app-asset-preview [assetId]="a.id" [alt]="a.original_name" [fit]="a.id === b.logo_asset_id ? 'contain' : 'cover'" />
+                    @if (a.id === b.logo_asset_id) { <span class="tag">Logo</span> }
+                  </div>
+                } @empty {
+                  <p class="muted small">Nessuna foto: caricale qui oppure rianalizza il sito.</p>
+                }
+              </div>
+            </section>
+          </div>
 
           <div class="side-col">
             @if (auth.canEdit()) {
@@ -74,7 +126,25 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
                 <h2><i class="ti ti-sparkles" aria-hidden="true"></i> Nuova campagna</h2>
                 <p class="muted small">L'AI prepara strategia, calendario e post con grafica.</p>
                 @if (error()) { <div class="alert">{{ error() }}</div> }
-                <label>Obiettivo<textarea rows="2" [(ngModel)]="goal" name="goal" placeholder="Far conoscere le torte autunnali e aumentare gli ordini"></textarea></label>
+                <div class="goal-field">
+                  <div class="goal-head">
+                    <span class="field-label">Obiettivo</span>
+                    <button type="button" class="link-btn" (click)="suggest(b)" [disabled]="suggesting()">
+                      @if (suggesting()) { <span class="spinner small"></span> Sto pensando… } @else { <i class="ti ti-bulb" aria-hidden="true"></i> Suggerisci con l'AI }
+                    </button>
+                  </div>
+                  <textarea rows="3" [(ngModel)]="goal" name="goal" aria-label="Obiettivo" placeholder="Aumentare le richieste di preventivo per i prodotti principali"></textarea>
+                  @if (suggestions().length) {
+                    <div class="goal-suggestions">
+                      @for (s of suggestions(); track s.title) {
+                        <button type="button" class="goal-card" [class.on]="goal === s.goal" (click)="goal = s.goal">
+                          <strong>{{ s.title }}</strong>
+                          <span>{{ s.goal }}</span>
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
                 <div class="edit-grid">
                   <label>Durata
                     <select [(ngModel)]="weeks" name="weeks">
@@ -106,10 +176,13 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
             <section class="card">
               <h2>Campagne</h2>
               @for (p of campaigns(); track p.id) {
-                <a class="campaign-row" [routerLink]="['/campaigns', p.id]">
-                  <span><strong>{{ p.name }}</strong><small class="muted">{{ p.created_at | date: 'd MMM yyyy' }} · {{ p.content_total ?? 0 }} contenuti</small></span>
+                <div class="campaign-row">
+                  <a [routerLink]="['/campaigns', p.id]"><strong>{{ p.name }}</strong><small class="muted">{{ p.created_at | date: 'd MMM yyyy' }} · {{ p.content_total ?? 0 }} contenuti</small></a>
                   <span class="badge" [attr.data-status]="p.status">{{ statusLabels[p.status] }}</span>
-                </a>
+                  @if (auth.canManage()) {
+                    <button class="icon-btn danger" (click)="removeCampaign(p)" [attr.aria-label]="'Elimina ' + p.name" title="Elimina campagna"><i class="ti ti-trash" aria-hidden="true"></i></button>
+                  }
+                </div>
               } @empty {
                 <p class="muted small">Nessuna campagna ancora.</p>
               }
@@ -130,6 +203,7 @@ export class ClientDetailComponent implements OnInit {
   readonly router = inject(Router);
   private api = inject(ApiService);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 
   readonly channels = CAMPAIGN_CHANNELS;
   readonly channelLabels = CHANNEL_LABELS;
@@ -146,7 +220,15 @@ export class ClientDetailComponent implements OnInit {
   editing = signal(false);
   generating = signal(false);
   error = signal<string | null>(null);
+  notice = signal<string | null>(null);
   selected = signal<Channel[]>(['instagram', 'facebook']);
+  photos = signal<Asset[]>([]);
+  uploading = signal(false);
+  reanalyzing = signal(false);
+  suggesting = signal(false);
+  suggestions = signal<GoalSuggestion[]>([]);
+  deleting = signal(false);
+  deleteCampaigns = true;
 
   goal = '';
   weeks = 4;
@@ -161,6 +243,75 @@ export class ClientDetailComponent implements OnInit {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     this.api.brand(id).subscribe({ next: (b) => this.brand.set(b), error: (err) => this.error.set(apiErrorMessage(err, 'Cliente non trovato.')) });
     this.api.projects().subscribe((list) => this.projects.set(list));
+    this.loadPhotos(id);
+  }
+
+  /** Rilegge il sito e aggiorna brand kit, colori e foto. */
+  reanalyze(brand: Brand): void {
+    this.reanalyzing.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    this.api
+      .reanalyzeBrand(brand.id)
+      .pipe(switchMap((job) => this.api.waitForJob(job.id)), finalize(() => this.reanalyzing.set(false)), takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (job) => {
+          if (job.status === 'failed') {
+            this.error.set(job.error ?? 'Analisi non riuscita.');
+            return;
+          }
+          const photos = job.result?.photos_imported ?? 0;
+          this.notice.set(`Brand kit aggiornato dal sito${photos ? `, ${photos} ${photos === 1 ? 'foto importata' : 'foto importate'}` : ''}.`);
+          this.api.brand(brand.id).subscribe((b) => this.brand.set(b));
+          this.loadPhotos(brand.id);
+        },
+        error: (err) => this.error.set(apiErrorMessage(err)),
+      });
+  }
+
+  suggest(brand: Brand): void {
+    this.suggesting.set(true);
+    this.error.set(null);
+    this.api
+      .suggestGoals(brand.id)
+      .pipe(switchMap((job) => this.api.waitForJob(job.id)), finalize(() => this.suggesting.set(false)), takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (job) => {
+          if (job.status === 'failed') this.error.set(job.error ?? 'Suggerimenti non disponibili.');
+          else this.suggestions.set(job.result?.goals ?? []);
+        },
+        error: (err) => this.error.set(apiErrorMessage(err)),
+      });
+  }
+
+  upload(event: Event, brand: Brand): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+    this.uploading.set(true);
+    let pending = files.length;
+    for (const file of files) {
+      this.api
+        .uploadAsset(file, brand.id)
+        .pipe(finalize(() => { if (--pending === 0) this.uploading.set(false); }))
+        .subscribe({
+          next: (asset) => this.photos.update((list) => [asset, ...list]),
+          error: (err) => this.error.set(`${file.name}: ${apiErrorMessage(err)}`),
+        });
+    }
+  }
+
+  removeCampaign(project: Project): void {
+    if (!confirm(`Eliminare la campagna "${project.name}" e tutti i suoi ${project.content_total ?? 0} contenuti?`)) return;
+    this.api.deleteProject(project.id).subscribe({
+      next: () => this.projects.update((list) => list.filter((p) => p.id !== project.id)),
+      error: (err) => this.error.set(apiErrorMessage(err)),
+    });
+  }
+
+  private loadPhotos(brandId: number): void {
+    this.api.assets(brandId).subscribe((list) => this.photos.set(list.filter((a) => a.kind === 'image')));
   }
 
   created(brand: Brand): void {
@@ -186,8 +337,7 @@ export class ClientDetailComponent implements OnInit {
   }
 
   remove(brand: Brand): void {
-    if (!confirm(`Eliminare il cliente "${brand.name}"? Le campagne resteranno senza brand.`)) return;
-    this.api.deleteBrand(brand.id).subscribe({
+    this.api.deleteBrand(brand.id, this.deleteCampaigns && this.campaigns().length > 0).subscribe({
       next: () => this.router.navigate(['/clients']),
       error: (err) => this.error.set(apiErrorMessage(err)),
     });

@@ -30,7 +30,7 @@ import { SiteAnalyzerComponent } from '../../shared/site-analyzer.component';
         <a class="card client-card link-card" [routerLink]="['/clients', b.id]">
           <div class="client-cover" [style.background]="b.primary_color ?? '#5B4BDB'">
             <span class="client-logo">
-              @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" [alt]="'Logo ' + b.name" /> } @else { {{ b.name.charAt(0) }} }
+              @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" fit="contain" [alt]="'Logo ' + b.name" /> } @else { {{ b.name.charAt(0) }} }
             </span>
           </div>
           <div class="client-body">

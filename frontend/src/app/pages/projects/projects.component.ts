@@ -73,7 +73,7 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
             <div class="project-head">
               @if (brandOf(p.brand_profile_id); as b) {
                 <span class="client-logo small" [style.background]="b.primary_color ?? '#5B4BDB'">
-                  @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" /> } @else { {{ b.name.charAt(0) }} }
+                  @if (b.logo_asset_id) { <app-asset-preview [assetId]="b.logo_asset_id" fit="contain" /> } @else { {{ b.name.charAt(0) }} }
                 </span>
               }
               <div class="grow">

@@ -115,6 +115,7 @@ export type BrandInput = Partial<Omit<Brand, 'id' | 'created_at' | 'updated_at'>
 
 export interface Asset {
   id: number;
+  brand_profile_id: number | null;
   kind: 'image' | 'video' | 'document';
   original_name: string;
   mime_type: string;
@@ -122,7 +123,21 @@ export interface Asset {
   created_at: string;
 }
 
-export type VisualLayout = 'bold' | 'light' | 'photo';
+export type VisualLayout = 'bold' | 'light' | 'photo' | 'split' | 'offer' | 'quote';
+
+export const LAYOUT_LABELS: Record<VisualLayout, string> = {
+  bold: 'Colore pieno',
+  light: 'Chiaro',
+  photo: 'Foto',
+  split: 'Foto e colore',
+  offer: 'Offerta',
+  quote: 'Citazione',
+};
+
+export interface GoalSuggestion {
+  title: string;
+  goal: string;
+}
 
 /** Grafica di un post: testi sovrapposti, layout e foto facoltativa dalla libreria. */
 export interface Visual {
@@ -182,7 +197,10 @@ export interface Job {
   id: number;
   type: string;
   status: 'queued' | 'running' | 'done' | 'failed';
-  result: { content_ids?: number[]; brand_id?: number; project_id?: number; logo_found?: boolean; site_colors?: string[] } | null;
+  result: {
+    content_ids?: number[]; content_id?: number; brand_id?: number; project_id?: number;
+    logo_found?: boolean; site_colors?: string[]; photos_imported?: number; goals?: GoalSuggestion[];
+  } | null;
   error: string | null;
   created_at: string;
 }

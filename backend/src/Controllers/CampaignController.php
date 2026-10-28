@@ -22,6 +22,33 @@ final class CampaignController
         Http::json(['data' => $job], 202);
     }
 
+    /** Rilegge il sito di un cliente esistente e aggiorna il suo brand kit (e le foto). */
+    public static function reanalyzeSite(int $brandId): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $brand = Tenant::findOrFail('brand_profiles', $brandId, $user['organization_id'], 'id, website_url');
+        $raw = file_get_contents('php://input') ?: '';
+        $data = trim($raw) === '' ? [] : Http::body();
+        $url = Http::optionalString($data, 'url', 2048) ?? $brand['website_url'];
+        if (!$url) Http::validationError('Indica il sito del cliente.');
+        try {
+            $url = SafeHttp::normalizeUrl($url);
+        } catch (SiteException $e) {
+            Http::validationError($e->getMessage());
+        }
+        $job = Jobs::enqueue($user, 'analyze_site', ['url' => $url, 'brand_id' => $brandId]);
+        Audit::log($user, 'brand.reanalysis_requested', 'brand_profile', $brandId);
+        Http::json(['data' => $job], 202);
+    }
+
+    /** Propone obiettivi di campagna per il cliente. */
+    public static function suggestGoals(int $brandId): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        Tenant::findOrFail('brand_profiles', $brandId, $user['organization_id'], 'id');
+        Http::json(['data' => Jobs::enqueue($user, 'suggest_goals', ['brand_id' => $brandId])], 202);
+    }
+
     /** Secondo passo: crea la campagna del cliente e ne avvia la pianificazione con l'AI. */
     public static function create(int $brandId): never
     {

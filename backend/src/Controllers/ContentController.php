@@ -25,6 +25,35 @@ final class ContentController
         Http::json(['data' => array_map([self::class, 'present'], $stmt->fetchAll())]);
     }
 
+    public static function show(int $id): never
+    {
+        $user = Auth::user();
+        Http::json(['data' => self::find($id, $user)]);
+    }
+
+    public static function destroy(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if ($item['status'] === 'published') Http::json(['error' => 'invalid_state', 'message' => 'Un contenuto pubblicato non si può eliminare.'], 409);
+        Database::connection()->prepare('DELETE FROM content_items WHERE id=? AND organization_id=?')->execute([$id, $user['organization_id']]);
+        Audit::log($user, 'content.deleted', 'content_item', $id);
+        Http::json(['data' => ['deleted' => true]]);
+    }
+
+    /** Fa riscrivere il post all'AI seguendo un'istruzione. Solo bozze o contenuti rifiutati. */
+    public static function rewrite(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $item = self::find($id, $user);
+        if (!in_array($item['status'], ['draft', 'rejected'], true)) {
+            Http::json(['error' => 'invalid_state', 'message' => 'Si possono riscrivere solo bozze o contenuti rifiutati.'], 409);
+        }
+        $instruction = Http::requiredString(Http::body(), 'instruction', 300);
+        $job = Jobs::enqueue($user, 'rewrite_content', ['content_id' => $id, 'instruction' => $instruction]);
+        Http::json(['data' => $job], 202);
+    }
+
     /** Sposta un contenuto nel calendario. I contenuti pubblicati non si spostano. */
     public static function schedule(int $id): never
     {

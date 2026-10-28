@@ -8,7 +8,7 @@ interface MarketingAi
 {
     public const CHANNELS = ['instagram', 'facebook', 'linkedin', 'blog', 'email', 'website', 'other'];
     public const CONTENT_TYPES = ['post', 'carosello', 'reel', 'storia', 'articolo', 'email'];
-    public const LAYOUTS = ['bold', 'light', 'photo'];
+    public const LAYOUTS = ['bold', 'light', 'photo', 'split', 'offer', 'quote'];
 
     /**
      * Varianti di testo per un singolo brief.
@@ -29,6 +29,18 @@ interface MarketingAi
      * @return array{strategy: array, posts: list<array>}
      */
     public function campaignPlan(array $brand, array $project, array $options): array;
+
+    /**
+     * Obiettivi di campagna proposti per il cliente, scritti in modo professionale.
+     * @return list<array{title: string, goal: string}>
+     */
+    public function suggestGoals(array $brand): array;
+
+    /**
+     * Riscrive un post seguendo un'istruzione (più breve, più emozionale…), grafica compresa.
+     * @return array{title: string, body: string, call_to_action: string, hashtags: list<string>, visual: array, reviewer_notes: string}
+     */
+    public function rewriteContent(array $brand, array $item, string $instruction): array;
 }
 
 final class MarketingAis

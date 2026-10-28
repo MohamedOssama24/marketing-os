@@ -27,6 +27,33 @@ final class ProjectController
         Http::json(['data' => self::find($id, $user['organization_id'])]);
     }
 
+    /** Elimina la campagna con tutti i suoi contenuti. */
+    public static function destroy(int $id): never
+    {
+        $user = Auth::userWithRole(Auth::MANAGERS);
+        Tenant::findOrFail('projects', $id, $user['organization_id'], 'id');
+        self::deleteWithContent([$id], $user['organization_id']);
+        Audit::log($user, 'project.deleted', 'project', $id);
+        Http::json(['data' => ['deleted' => true]]);
+    }
+
+    /** I contenuti sono collegati con ON DELETE CASCADE, ma li elimino esplicitamente per non dipendere dallo schema. */
+    public static function deleteWithContent(array $projectIds, int $organizationId): void
+    {
+        if (!$projectIds) return;
+        $marks = implode(',', array_fill(0, count($projectIds), '?'));
+        $pdo = Database::connection();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM content_items WHERE organization_id=? AND project_id IN ({$marks})")->execute([$organizationId, ...$projectIds]);
+            $pdo->prepare("DELETE FROM projects WHERE organization_id=? AND id IN ({$marks})")->execute([$organizationId, ...$projectIds]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
     public static function find(int $id, int $organizationId): array
     {
         return self::present(Tenant::findOrFail('projects', $id, $organizationId, self::COLUMNS));

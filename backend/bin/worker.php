@@ -17,18 +17,19 @@ function loadProject(array $job): array
 }
 
 $handlers = [
+    /** Crea il cliente dal sito, oppure (con brand_id) aggiorna il brand kit di un cliente esistente. */
     'analyze_site' => function (array $job): array {
         $orgId = (int)$job['organization_id'];
+        $userId = (int)$job['created_by'];
+        $existing = isset($job['payload']['brand_id'])
+            ? (Tenant::find('brand_profiles', (int)$job['payload']['brand_id'], $orgId, 'id, name, logo_asset_id') ?? throw new GenerationException('Il cliente non esiste più.'))
+            : null;
         try {
             $site = SiteReader::read($job['payload']['url']);
         } catch (SiteException $e) {
             throw new GenerationException($e->getMessage());
         }
         $kit = MarketingAis::make()->brandKitFromSite($site);
-        $logoId = null;
-        if ($logo = SiteReader::downloadLogo($site['logo_candidates'])) {
-            $logoId = AssetController::saveBytes($orgId, (int)$job['created_by'], $logo['bytes'], $logo['name']);
-        }
 
         $fields = ['name' => 160, 'summary' => 500, 'industry' => 160, 'audience' => 2000, 'tone_of_voice' => 2000, 'products' => 5000, 'keywords' => 1000, 'words_to_avoid' => 1000, 'brand_guidelines' => 5000];
         $values = [];
@@ -37,10 +38,75 @@ $handlers = [
             $values[$key] = $value === '' ? null : mb_substr($value, 0, $max);
         }
         $values['name'] ??= $site['host'];
+        $values['website_url'] = $site['url'];
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('INSERT INTO brand_profiles (organization_id, ' . implode(', ', array_keys($values)) . ', website_url, primary_color, secondary_color, logo_asset_id) VALUES (?' . str_repeat(', ?', count($values) + 4) . ')');
-        $stmt->execute([$orgId, ...array_values($values), $site['url'], $kit['primary_color'], $kit['secondary_color'], $logoId]);
-        return ['brand_id' => (int)$pdo->lastInsertId(), 'site_colors' => $site['colors'], 'logo_found' => $logoId !== null];
+
+        if ($existing) {
+            // Il nome scelto dall'utente resta; i campi vuoti nell'analisi non cancellano quelli esistenti.
+            unset($values['name']);
+            $values = array_filter($values, fn($v) => $v !== null);
+            if ($kit['primary_color']) $values['primary_color'] = $kit['primary_color'];
+            if ($kit['secondary_color']) $values['secondary_color'] = $kit['secondary_color'];
+            $set = implode(', ', array_map(fn($c) => "{$c}=?", array_keys($values)));
+            $pdo->prepare("UPDATE brand_profiles SET {$set} WHERE id=? AND organization_id=?")->execute([...array_values($values), $existing['id'], $orgId]);
+            $brandId = (int)$existing['id'];
+        } else {
+            $values['primary_color'] = $kit['primary_color'];
+            $values['secondary_color'] = $kit['secondary_color'];
+            $stmt = $pdo->prepare('INSERT INTO brand_profiles (organization_id, ' . implode(', ', array_keys($values)) . ') VALUES (?' . str_repeat(', ?', count($values)) . ')');
+            $stmt->execute([$orgId, ...array_values($values)]);
+            $brandId = (int)$pdo->lastInsertId();
+        }
+
+        $logoId = $existing['logo_asset_id'] ?? null;
+        if (!$logoId && ($logo = SiteReader::downloadLogo($site['logo_candidates']))) {
+            $logoId = AssetController::saveBytes($orgId, $userId, $logo['bytes'], $logo['name'], $brandId);
+            $pdo->prepare('UPDATE brand_profiles SET logo_asset_id=? WHERE id=? AND organization_id=?')->execute([$logoId, $brandId, $orgId]);
+        }
+
+        // Foto dei contenuti del sito, saltando quelle già importate per questo cliente.
+        $stmt = $pdo->prepare('SELECT original_name FROM assets WHERE organization_id=? AND brand_profile_id=?');
+        $stmt->execute([$orgId, $brandId]);
+        $known = array_flip($stmt->fetchAll(PDO::FETCH_COLUMN));
+        $photos = 0;
+        foreach (SiteReader::downloadImages($site['image_candidates']) as $image) {
+            if (isset($known[$image['name']])) continue;
+            if (AssetController::saveBytes($orgId, $userId, $image['bytes'], $image['name'], $brandId)) $photos++;
+        }
+        return ['brand_id' => $brandId, 'site_colors' => $site['colors'], 'logo_found' => $logoId !== null, 'photos_imported' => $photos];
+    },
+
+    'suggest_goals' => function (array $job): array {
+        $brand = Tenant::find('brand_profiles', (int)$job['payload']['brand_id'], (int)$job['organization_id'])
+            ?? throw new GenerationException('Il cliente non esiste più.');
+        $goals = [];
+        foreach (MarketingAis::make()->suggestGoals($brand) as $goal) {
+            $title = trim((string)($goal['title'] ?? ''));
+            $text = trim((string)($goal['goal'] ?? ''));
+            if ($title !== '' && $text !== '') $goals[] = ['title' => mb_substr($title, 0, 60), 'goal' => mb_substr($text, 0, 500)];
+        }
+        return ['goals' => $goals];
+    },
+
+    'rewrite_content' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $item = Tenant::find('content_items', (int)$job['payload']['content_id'], $orgId, ContentController::COLUMNS)
+            ?? throw new GenerationException('Il contenuto non esiste più.');
+        $item = ContentController::present($item);
+        if (!in_array($item['status'], ['draft', 'rejected'], true)) throw new GenerationException('Il contenuto non è più modificabile.');
+        $project = Tenant::find('projects', (int)$item['project_id'], $orgId, 'brand_profile_id');
+        $brand = $project && $project['brand_profile_id'] ? (Tenant::find('brand_profiles', (int)$project['brand_profile_id'], $orgId) ?? []) : [];
+
+        $result = MarketingAis::make()->rewriteContent($brand, $item, $job['payload']['instruction']);
+        // La foto scelta resta, anche se l'AI cambia testi e stile.
+        $visual = ContentController::visual(($result['visual'] ?? []) + ['asset_id' => $item['visual']['asset_id'] ?? null], $orgId, false);
+        Database::connection()->prepare("UPDATE content_items SET title=?, body=?, visual=?, status='draft' WHERE id=? AND organization_id=?")->execute([
+            mb_substr(trim((string)($result['title'] ?? '')) ?: $item['title'], 0, 220),
+            formatBody($result),
+            $visual === null ? null : json_encode($visual, JSON_UNESCAPED_UNICODE),
+            $item['id'], $orgId,
+        ]);
+        return ['content_id' => (int)$item['id']];
     },
 
     'generate_campaign' => function (array $job): array {
@@ -55,6 +121,9 @@ $handlers = [
 
         $start = new DateTimeImmutable($payload['start_date']);
         $lastDay = $payload['weeks'] * 7;
+        // Le foto del cliente vanno a rotazione sui post con layout fotografico.
+        $photos = $project['brand_profile_id'] ? AssetController::brandPhotoIds($orgId, (int)$project['brand_profile_id']) : [];
+        $photoIndex = 0;
         $stmt = $pdo->prepare('INSERT INTO content_items (organization_id, project_id, created_by, channel, content_type, title, body, visual, scheduled_at, ai_generated, job_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)');
         $ids = [];
         foreach ($plan['posts'] as $post) {
@@ -62,6 +131,9 @@ $handlers = [
             $day = max(1, min($lastDay, (int)($post['day'] ?? 1)));
             $when = $start->modify('+' . ($day - 1) . ' days')->format('Y-m-d') . ' ' . (CHANNEL_TIMES[$channel] ?? '10:00') . ':00';
             $visual = ContentController::visual($post['visual'] ?? null, $orgId, false);
+            if ($visual && $photos && in_array($visual['layout'], ['photo', 'split'], true)) {
+                $visual['asset_id'] = $photos[$photoIndex++ % count($photos)];
+            }
             $stmt->execute([
                 $orgId, $project['id'], $job['created_by'], $channel,
                 in_array($post['content_type'] ?? '', MarketingAi::CONTENT_TYPES, true) ? $post['content_type'] : 'post',

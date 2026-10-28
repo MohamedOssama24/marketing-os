@@ -46,11 +46,15 @@ $router->add('GET', '/api/v1/projects', [ProjectController::class, 'index']);
 $router->add('POST', '/api/v1/projects', [ProjectController::class, 'store']);
 $router->add('GET', '/api/v1/projects/{id}', [ProjectController::class, 'show']);
 $router->add('PATCH', '/api/v1/projects/{id}', [ProjectController::class, 'update']);
+$router->add('DELETE', '/api/v1/projects/{id}', [ProjectController::class, 'destroy']);
 
 $router->add('GET', '/api/v1/projects/{projectId}/content', [ContentController::class, 'index']);
 $router->add('POST', '/api/v1/projects/{projectId}/content', [ContentController::class, 'store']);
 $router->add('POST', '/api/v1/projects/{projectId}/generate', [ContentController::class, 'generate']);
+$router->add('GET', '/api/v1/content/{id}', [ContentController::class, 'show']);
 $router->add('PATCH', '/api/v1/content/{id}', [ContentController::class, 'update']);
+$router->add('DELETE', '/api/v1/content/{id}', [ContentController::class, 'destroy']);
+$router->add('POST', '/api/v1/content/{id}/rewrite', [ContentController::class, 'rewrite']);
 $router->add('POST', '/api/v1/content/{id}/submit', [ContentController::class, 'submit']);
 $router->add('POST', '/api/v1/content/{id}/approve', [ContentController::class, 'approve']);
 $router->add('POST', '/api/v1/content/{id}/reject', [ContentController::class, 'reject']);
@@ -59,6 +63,8 @@ $router->add('GET', '/api/v1/approvals', [ContentController::class, 'pendingAppr
 
 $router->add('POST', '/api/v1/onboarding/analyze', [CampaignController::class, 'analyzeSite']);
 $router->add('POST', '/api/v1/brands/{brandId}/campaigns', [CampaignController::class, 'create']);
+$router->add('POST', '/api/v1/brands/{brandId}/analyze', [CampaignController::class, 'reanalyzeSite']);
+$router->add('POST', '/api/v1/brands/{brandId}/goal-suggestions', [CampaignController::class, 'suggestGoals']);
 
 $router->add('GET', '/api/v1/dashboard', [DashboardController::class, 'dashboard']);
 $router->add('GET', '/api/v1/calendar', [DashboardController::class, 'calendar']);

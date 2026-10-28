@@ -41,6 +41,9 @@ export class ApiService {
   analyzeSite = (url: string) => this.post<Job>('/onboarding/analyze', { url });
   createCampaign = (brandId: number, req: CampaignRequest) =>
     this.post<{ project: Project; job: Job }>(`/brands/${brandId}/campaigns`, req);
+  reanalyzeBrand = (brandId: number, url?: string) => this.post<Job>(`/brands/${brandId}/analyze`, url ? { url } : {});
+  suggestGoals = (brandId: number) => this.post<Job>(`/brands/${brandId}/goal-suggestions`);
+  deleteProject = (id: number) => this.delete(`/projects/${id}`);
 
   /** Segue un lavoro in background ogni 2 secondi finché termina (al massimo 4 minuti). */
   waitForJob(id: number): Observable<Job> {
@@ -57,14 +60,16 @@ export class ApiService {
   brand = (id: number) => this.get<Brand>(`/brands/${id}`);
   createBrand = (b: BrandInput) => this.post<Brand>('/brands', b);
   updateBrand = (id: number, b: BrandInput) => this.patch<Brand>(`/brands/${id}`, b);
-  deleteBrand = (id: number) => this.delete(`/brands/${id}`);
+  /** Con withCampaigns elimina anche le campagne del cliente e i loro contenuti. */
+  deleteBrand = (id: number, withCampaigns = false) => this.delete(`/brands/${id}${withCampaigns ? '?with_campaigns=1' : ''}`);
 
   // Libreria file
-  assets = () => this.get<Asset[]>('/assets');
+  assets = (brandId?: number) => this.get<Asset[]>(brandId ? `/assets?brand_id=${brandId}` : '/assets');
   deleteAsset = (id: number) => this.delete(`/assets/${id}`);
-  uploadAsset(file: File): Observable<Asset> {
+  uploadAsset(file: File, brandId?: number): Observable<Asset> {
     const form = new FormData();
     form.append('file', file);
+    if (brandId) form.append('brand_profile_id', String(brandId));
     return this.post<Asset>('/assets', form);
   }
   /** Il file richiede il token, quindi si scarica come blob e si mostra con un object URL. */
@@ -72,6 +77,9 @@ export class ApiService {
 
   // Contenuti
   content = (projectId: number) => this.get<ContentItem[]>(`/projects/${projectId}/content`);
+  contentItem = (id: number) => this.get<ContentItem>(`/content/${id}`);
+  deleteContent = (id: number) => this.delete(`/content/${id}`);
+  rewriteContent = (id: number, instruction: string) => this.post<Job>(`/content/${id}/rewrite`, { instruction });
   createContent = (projectId: number, c: Pick<ContentItem, 'channel' | 'content_type' | 'title' | 'body'>) =>
     this.post<ContentItem>(`/projects/${projectId}/content`, c);
   updateContent = (id: number, c: Partial<Pick<ContentItem, 'channel' | 'content_type' | 'title' | 'body'>> & { visual?: Visual | null }) =>

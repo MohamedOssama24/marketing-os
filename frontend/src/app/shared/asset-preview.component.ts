@@ -11,7 +11,7 @@ import { Asset } from '../core/models';
       @if (kind === 'video') {
         <video [src]="url()" controls muted preload="metadata"></video>
       } @else {
-        <img [src]="url()" [alt]="alt" />
+        <img [src]="url()" [alt]="alt" [class.contain]="fit === 'contain'" />
       }
     } @else {
       <div class="asset-placeholder">{{ kind === 'document' ? 'PDF' : '…' }}</div>
@@ -20,6 +20,7 @@ import { Asset } from '../core/models';
   styles: [`
     :host { display: block; width: 100%; height: 100%; }
     img, video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    img.contain { object-fit: contain; padding: 8%; box-sizing: border-box; }
     .asset-placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted); font-weight: 600; background: #eef0f5; }
   `],
 })
@@ -27,6 +28,8 @@ export class AssetPreviewComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) assetId!: number;
   @Input() kind: Asset['kind'] = 'image';
   @Input() alt = '';
+  /** contain per i loghi (mai ritagliati), cover per le foto. */
+  @Input() fit: 'cover' | 'contain' = 'cover';
 
   private api = inject(ApiService);
   url = signal<string | null>(null);

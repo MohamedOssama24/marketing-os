@@ -27,7 +27,7 @@ import { PostCardComponent } from '../../shared/post-card.component';
       @for (c of items(); track c.id) {
         <div class="feed-item">
           <a class="feed-context small" [routerLink]="['/campaigns', c.project_id]"><i class="ti ti-speakerphone" aria-hidden="true"></i> {{ c.project_name }}</a>
-          <app-post-card [item]="c" [brand]="brandOf(c.brand_profile_id)" [assets]="assets()" (changed)="changed($event)" />
+          <app-post-card [item]="c" [brand]="brandOf(c.brand_profile_id)" [assets]="assets()" (changed)="changed($event)" (removed)="removed($event)" />
         </div>
       } @empty {
         @if (loaded()) {
@@ -65,6 +65,10 @@ export class ApprovalsComponent implements OnInit {
 
   brandOf(id: number | null | undefined): Brand | null {
     return this.brands().find((b) => b.id === id) ?? null;
+  }
+
+  removed(id: number): void {
+    this.items.update((list) => list.filter((c) => c.id !== id));
   }
 
   /** Un contenuto approvato o rifiutato esce dalla lista. */

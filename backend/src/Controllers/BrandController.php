@@ -68,10 +68,20 @@ final class BrandController
     {
         $user = Auth::userWithRole(Auth::MANAGERS);
         Tenant::findOrFail('brand_profiles', $id, $user['organization_id'], 'id');
-        $stmt = Database::connection()->prepare('DELETE FROM brand_profiles WHERE id=? AND organization_id=?');
+        $pdo = Database::connection();
+        // Con ?with_campaigns=1 elimina anche le campagne del cliente; altrimenti restano senza cliente.
+        $deletedCampaigns = 0;
+        if (($_GET['with_campaigns'] ?? '') === '1') {
+            $stmt = $pdo->prepare('SELECT id FROM projects WHERE organization_id=? AND brand_profile_id=?');
+            $stmt->execute([$user['organization_id'], $id]);
+            $projectIds = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+            ProjectController::deleteWithContent($projectIds, $user['organization_id']);
+            $deletedCampaigns = count($projectIds);
+        }
+        $stmt = $pdo->prepare('DELETE FROM brand_profiles WHERE id=? AND organization_id=?');
         $stmt->execute([$id, $user['organization_id']]);
         Audit::log($user, 'brand.deleted', 'brand_profile', $id);
-        Http::json(['data' => ['deleted' => true]]);
+        Http::json(['data' => ['deleted' => true, 'deleted_campaigns' => $deletedCampaigns]]);
     }
 
     /**

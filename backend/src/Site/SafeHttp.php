@@ -71,18 +71,21 @@ final class SafeHttp
         if (!in_array($scheme, ['http', 'https'], true) || $host === '') throw new SiteException('Indirizzo del sito non valido.');
         if (isset($parts['user']) || isset($parts['pass'])) throw new SiteException('Indirizzo del sito non valido.');
         $port = (int)($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
-        if (!in_array($port, [80, 443], true)) throw new SiteException('Sono ammesse solo le porte standard 80 e 443.');
+        if (!in_array($port, [80, 443], true)) throw new BlockedAddressException('Sono ammesse solo le porte standard 80 e 443.');
 
         $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
         if (!$ips) throw new SiteException('Dominio non trovato.');
         foreach ($ips as $ip) {
             $carrierNat = (ip2long($ip) & 0xFFC00000) === (ip2long('100.64.0.0') & 0xFFC00000);
             if ($carrierNat || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                throw new SiteException('Questo indirizzo non è consentito.');
+                throw new BlockedAddressException('Questo indirizzo non è consentito.');
             }
         }
         return [$host, $port, $ips[0]];
     }
 }
 
-final class SiteException extends RuntimeException {}
+class SiteException extends RuntimeException {}
+
+/** Indirizzo rifiutato per sicurezza (rete interna, porta non standard): non va mai ritentato in altre forme. */
+final class BlockedAddressException extends SiteException {}

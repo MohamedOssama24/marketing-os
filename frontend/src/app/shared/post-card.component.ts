@@ -1,10 +1,12 @@
 import { Component, EventEmitter, Input, Output, ViewChild, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Observable } from 'rxjs';
+import { Observable, switchMap } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { ApiService } from '../core/api.service';
-import { Asset, Brand, CHANNEL_LABELS, CONTENT_STATUS_LABELS, ContentItem, Visual, VisualLayout, apiErrorMessage } from '../core/models';
+import {
+  Asset, Brand, CHANNEL_LABELS, CONTENT_STATUS_LABELS, ContentItem, LAYOUT_LABELS, Visual, VisualLayout, apiErrorMessage,
+} from '../core/models';
 import { PostVisualComponent } from './post-visual.component';
 import { AssetPreviewComponent } from './asset-preview.component';
 
@@ -28,7 +30,7 @@ export const CHANNEL_ICONS: Record<string, string> = {
       <div class="phone">
         <header class="phone-head">
           <span class="avatar" [style.background]="brand?.primary_color ?? '#5B4BDB'">
-            @if (brand?.logo_asset_id) { <app-asset-preview [assetId]="brand!.logo_asset_id!" /> } @else { {{ (brand?.name ?? '?').charAt(0) }} }
+            @if (brand?.logo_asset_id) { <app-asset-preview [assetId]="brand!.logo_asset_id!" fit="contain" /> } @else { {{ (brand?.name ?? '?').charAt(0) }} }
           </span>
           <span class="handle">{{ handle() }}</span>
           <span class="channel"><i class="ti" [class]="'ti ' + channelIcon()" aria-hidden="true"></i>{{ channelLabels[item.channel] }}</span>
@@ -95,13 +97,32 @@ export const CHANNEL_ICONS: Record<string, string> = {
             <button class="btn danger small" (click)="reject()" [disabled]="!note.trim() || busy()">Richiedi modifiche</button>
           </div>
         </div>
+      } @else if (rewriting()) {
+        <div class="edit-panel rewrite-panel">
+          @if (rewriteBusy()) {
+            <p class="rewrite-progress"><span class="spinner"></span> L'AI sta riscrivendo il post…</p>
+          } @else {
+            <p class="small muted">Come vuoi riscriverlo?</p>
+            <div class="quick-picks">
+              @for (q of quickInstructions; track q) { <button class="chip" (click)="rewrite(q)">{{ q }}</button> }
+            </div>
+            <div class="rewrite-custom">
+              <input [(ngModel)]="customInstruction" maxlength="300" placeholder="Oppure scrivi tu: metti in risalto la qualità" (keydown.enter)="rewrite(customInstruction)" />
+              <button class="icon-btn" (click)="rewrite(customInstruction)" [disabled]="!customInstruction.trim()" aria-label="Riscrivi"><i class="ti ti-arrow-right" aria-hidden="true"></i></button>
+            </div>
+            <div class="actions"><button class="btn ghost small" (click)="rewriting.set(false)">Annulla</button></div>
+          }
+        </div>
       } @else {
         <div class="post-actions">
-          <button class="icon-btn" (click)="copy()" [attr.aria-label]="'Copia testo'" title="Copia testo"><i class="ti" [class]="copied() ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button>
+          <button class="icon-btn" (click)="copy()" aria-label="Copia testo" title="Copia testo"><i class="ti" [class]="copied() ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button>
           <button class="icon-btn" (click)="download()" aria-label="Scarica grafica" title="Scarica grafica PNG"><i class="ti ti-download" aria-hidden="true"></i></button>
-          @if (auth.canEdit() && (item.status === 'draft' || item.status === 'rejected')) {
+          @if (editable()) {
+            <button class="icon-btn" (click)="cycleStyle()" [disabled]="busy()" aria-label="Cambia stile" [title]="'Cambia stile (ora: ' + layoutLabels[item.visual?.layout ?? 'bold'] + ')'"><i class="ti ti-palette" aria-hidden="true"></i></button>
+            <button class="icon-btn ai" (click)="rewriting.set(true); customInstruction = ''" aria-label="Riscrivi con AI" title="Riscrivi con AI"><i class="ti ti-sparkles" aria-hidden="true"></i></button>
             <button class="icon-btn" (click)="startEdit()" aria-label="Modifica" title="Modifica"><i class="ti ti-pencil" aria-hidden="true"></i></button>
-            <button class="btn primary small grow" (click)="run(api.submitContent(item.id))" [disabled]="busy()">Invia in revisione</button>
+            <button class="icon-btn danger" (click)="remove()" [disabled]="busy()" aria-label="Elimina" title="Elimina post"><i class="ti ti-trash" aria-hidden="true"></i></button>
+            <button class="btn primary small full-width" (click)="run(api.submitContent(item.id))" [disabled]="busy()">Invia in revisione</button>
           }
           @if (auth.canManage() && item.status === 'in_review') {
             <button class="btn ghost small grow" (click)="rejecting.set(true); note = ''">Modifiche</button>
@@ -118,16 +139,21 @@ export class PostCardComponent {
   @Input() brand: Brand | null = null;
   @Input() assets: Asset[] = [];
   @Output() changed = new EventEmitter<ContentItem>();
+  @Output() removed = new EventEmitter<number>();
   @ViewChild('visualRef') visualRef?: PostVisualComponent;
 
   readonly auth = inject(AuthService);
   readonly api = inject(ApiService);
   readonly channelLabels = CHANNEL_LABELS;
   readonly statusLabels = CONTENT_STATUS_LABELS;
-  readonly layouts: [VisualLayout, string][] = [['bold', 'Colore pieno'], ['light', 'Chiaro'], ['photo', 'Foto']];
+  readonly layoutLabels = LAYOUT_LABELS;
+  readonly layouts = Object.entries(LAYOUT_LABELS) as [VisualLayout, string][];
+  readonly quickInstructions = ['Più breve', 'Più emozionale', 'Più professionale', 'Più ironico', 'Aggiungi urgenza', 'Racconta una storia'];
 
   editing = signal(false);
   rejecting = signal(false);
+  rewriting = signal(false);
+  rewriteBusy = signal(false);
   expanded = signal(false);
   copied = signal(false);
   busy = signal(false);
@@ -136,9 +162,66 @@ export class PostCardComponent {
   draftBody = '';
   draftVisual: Visual = { headline: '', subheadline: '', badge: '', layout: 'bold', asset_id: null };
   note = '';
+  customInstruction = '';
 
+  /** Immagini della libreria, con prima quelle del cliente del post. */
   get images(): Asset[] {
-    return this.assets.filter((a) => a.kind === 'image');
+    const images = this.assets.filter((a) => a.kind === 'image' && a.id !== this.brand?.logo_asset_id);
+    return [...images.filter((a) => a.brand_profile_id === this.brand?.id), ...images.filter((a) => a.brand_profile_id !== this.brand?.id)];
+  }
+
+  editable(): boolean {
+    return this.auth.canEdit() && (this.item.status === 'draft' || this.item.status === 'rejected');
+  }
+
+  /** Passa allo stile grafico successivo e lo salva subito. */
+  cycleStyle(): void {
+    const current = this.item.visual?.layout ?? 'bold';
+    const order = this.layouts.map(([key]) => key);
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    const visual: Visual = { headline: this.item.title.slice(0, 60), subheadline: '', badge: '', asset_id: null, ...(this.item.visual ?? {}), layout: next };
+    // Per gli stili con foto propone la prima foto del cliente, se il post non ne ha una.
+    if ((next === 'photo' || next === 'split') && !visual.asset_id) visual.asset_id = this.images[0]?.id ?? null;
+    this.run(this.api.updateContent(this.item.id, { visual }));
+  }
+
+  rewrite(instruction: string): void {
+    if (!instruction.trim()) return;
+    this.rewriteBusy.set(true);
+    this.error.set(null);
+    this.api
+      .rewriteContent(this.item.id, instruction.trim())
+      .pipe(switchMap((job) => this.api.waitForJob(job.id)))
+      .subscribe({
+        next: (job) => {
+          if (job.status === 'failed') {
+            this.rewriteBusy.set(false);
+            this.error.set(job.error ?? 'Riscrittura non riuscita.');
+            return;
+          }
+          this.api.contentItem(this.item.id).subscribe((updated) => {
+            this.rewriteBusy.set(false);
+            this.rewriting.set(false);
+            this.changed.emit(updated);
+          });
+        },
+        error: (err) => {
+          this.rewriteBusy.set(false);
+          this.error.set(apiErrorMessage(err));
+        },
+      });
+  }
+
+  remove(): void {
+    if (!confirm(`Eliminare il post "${this.item.title}"?`)) return;
+    this.busy.set(true);
+    this.api.deleteContent(this.item.id).subscribe({
+      next: () => this.removed.emit(this.item.id),
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(apiErrorMessage(err));
+      },
+    });
   }
 
   channelIcon(): string {

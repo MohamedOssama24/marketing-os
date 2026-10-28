@@ -194,6 +194,48 @@ $dashB = req('GET', '/dashboard', $b['token'])[1]['data'] ?? [];
 check('Dashboard di A con clienti e approvazioni', ($dashA['clients'] ?? 0) === 1 && ($dashA['pending_approval'] ?? 0) >= 1, json_encode($dashA));
 check('Dashboard di B senza dati di A', ($dashB['pending_approval'] ?? -1) === 0 && ($dashB['active_campaigns'] ?? -1) === 0, json_encode($dashB));
 
+echo "\nObiettivi suggeriti, riscrittura ed eliminazioni\n";
+$goalsJob = req('POST', "/brands/{$brandA['id']}/goal-suggestions", $a['token'], []);
+expectStatus('A chiede obiettivi suggeriti (202)', $goalsJob, 202);
+expectStatus('B non chiede obiettivi per il cliente di A', req('POST', "/brands/{$brandA['id']}/goal-suggestions", $b['token'], []), 404);
+$goals = waitJob((int)$goalsJob[1]['data']['id'], $a['token']);
+check('Ricevuti 4 obiettivi con titolo e testo', count($goals['result']['goals'] ?? []) === 4 && !empty($goals['result']['goals'][0]['goal']), json_encode($goals));
+
+$draft = $posts[1];
+expectStatus('B non riscrive i post di A', req('POST', "/content/{$draft['id']}/rewrite", $b['token'], ['instruction' => 'Più breve']), 404);
+expectStatus('Riscrittura senza istruzione rifiutata', req('POST', "/content/{$draft['id']}/rewrite", $a['token'], []), 422);
+$rewriteJob = req('POST', "/content/{$draft['id']}/rewrite", $a['token'], ['instruction' => 'Più breve e diretto']);
+$rewritten = waitJob((int)($rewriteJob[1]['data']['id'] ?? 0), $a['token']);
+$after = req('GET', "/content/{$draft['id']}", $a['token'])[1]['data'] ?? [];
+check('Post riscritto con la nuova istruzione', ($rewritten['status'] ?? '') === 'done' && str_contains($after['body'] ?? '', 'Più breve e diretto'), json_encode($rewritten));
+expectStatus('Non si riscrive un post in revisione', req('POST', "/content/{$post['id']}/rewrite", $a['token'], ['instruction' => 'X']), 409);
+
+expectStatus('B non elimina i post di A', req('DELETE', "/content/{$draft['id']}", $b['token']), 404);
+expectStatus('Viewer non elimina post', req('DELETE', "/content/{$draft['id']}", $viewer), 403);
+expectStatus('A elimina un post', req('DELETE', "/content/{$draft['id']}", $a['token']), 200);
+expectStatus('Il post eliminato non esiste più', req('GET', "/content/{$draft['id']}", $a['token']), 404);
+
+expectStatus('B non elimina la campagna di A', req('DELETE', "/projects/{$campaignId}", $b['token']), 404);
+expectStatus('Editor non elimina campagne', req('DELETE', "/projects/{$campaignId}", $editor), 403);
+expectStatus('A elimina la campagna', req('DELETE', "/projects/{$campaignId}", $a['token']), 200);
+expectStatus('La campagna eliminata non esiste più', req('GET', "/projects/{$campaignId}", $a['token']), 404);
+check('Anche i suoi post sono eliminati', (req('GET', '/calendar?from=2030-03-01&to=2030-03-31', $a['token'])[1]['data'] ?? null) === []);
+
+$brandDel = req('POST', '/brands', $a['token'], ['name' => 'Cliente da eliminare'])[1]['data'];
+$campDel = req('POST', "/brands/{$brandDel['id']}/campaigns", $a['token'], ['goal' => 'X', 'weeks' => 1, 'posts_per_week' => 1])[1]['data']['project'];
+$photoDel = req('POST', '/assets', $a['token'], null, ['file' => new CURLFile($pngPath, 'image/png', 'foto.png'), 'brand_profile_id' => (string)$brandDel['id']])[1]['data'];
+check('File collegato al cliente', ($photoDel['brand_profile_id'] ?? null) === $brandDel['id']);
+check('Filtro della libreria per cliente', array_column(req('GET', "/assets?brand_id={$brandDel['id']}", $a['token'])[1]['data'] ?? [], 'id') === [$photoDel['id']]);
+expectStatus('B non collega file ai clienti di A', req('POST', '/assets', $b['token'], null, ['file' => new CURLFile($pngPath, 'image/png', 'x.png'), 'brand_profile_id' => (string)$brandDel['id']]), 422);
+$deleted = req('DELETE', "/brands/{$brandDel['id']}?with_campaigns=1", $a['token']);
+check('Cliente eliminato con le sue campagne', ($deleted[1]['data']['deleted_campaigns'] ?? 0) === 1, $deleted[2]);
+expectStatus('La campagna del cliente eliminato non esiste più', req('GET', "/projects/{$campDel['id']}", $a['token']), 404);
+
+expectStatus('B non rianalizza il cliente di A', req('POST', "/brands/{$brandA['id']}/analyze", $b['token'], ['url' => 'example.com']), 404);
+$reJob = req('POST', "/brands/{$brandA['id']}/analyze", $a['token'], ['url' => 'http://127.0.0.1/']);
+$reResult = waitJob((int)($reJob[1]['data']['id'] ?? 0), $a['token']);
+check('Nuova analisi verso un indirizzo interno bloccata', ($reResult['status'] ?? '') === 'failed', json_encode($reResult));
+
 echo "\nAnalisi del sito: indirizzi interni bloccati\n";
 expectStatus('Indirizzo non valido rifiutato', req('POST', '/onboarding/analyze', $a['token'], ['url' => 'non è un sito']), 422);
 foreach (['http://nginx/', 'http://169.254.169.254/latest/meta-data/', 'http://127.0.0.1/', 'http://db:3306/'] as $internal) {
