@@ -15,6 +15,7 @@ require_once __DIR__ . '/Jobs.php';
 require_once __DIR__ . '/Ai/MarketingAi.php';
 require_once __DIR__ . '/Ai/FakeMarketingAi.php';
 require_once __DIR__ . '/Ai/ClaudeMarketingAi.php';
+require_once __DIR__ . '/Ai/GeminiMarketingAi.php';
 require_once __DIR__ . '/Ai/Growth.php';
 require_once __DIR__ . '/Site/SafeHttp.php';
 require_once __DIR__ . '/Site/SiteReader.php';

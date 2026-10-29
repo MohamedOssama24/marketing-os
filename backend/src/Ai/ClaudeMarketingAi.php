@@ -8,7 +8,7 @@ use Anthropic\Core\Exceptions\AuthenticationException;
 use Anthropic\Core\Exceptions\BadRequestException;
 use Anthropic\Core\Exceptions\RateLimitException;
 
-final class ClaudeMarketingAi implements MarketingAi
+class ClaudeMarketingAi implements MarketingAi
 {
     // I prompt di sistema non contengono dati variabili, così possono essere messi in cache tra le richieste.
     private const COPY_RULES = <<<'TXT'
@@ -538,7 +538,7 @@ final class ClaudeMarketingAi implements MarketingAi
             . 'Voci di menu: ' . implode(' | ', $site['menu']) . "\nTitoli delle pagine: " . implode(' | ', $site['headings']) . "\n\n{$pages}</sito>\n\n";
     }
 
-    private function callJson(string $system, string $prompt, array $schema, ?string $effort = null, int $maxTokens = 16000): array
+    protected function callJson(string $system, string $prompt, array $schema, ?string $effort = null, int $maxTokens = 16000): array
     {
         try {
             $message = $this->client->beta->messages->create(

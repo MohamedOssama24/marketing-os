@@ -44,12 +44,28 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 
 `ANTHROPIC_MODEL` (default `claude-opus-5-5`) e `ANTHROPIC_EFFORT` (default `medium`) regolano qualità e costo.
 
+### In alternativa: Google Gemini (piano gratuito)
+
+Gemini ha un piano gratuito con un limite di richieste al minuto e al giorno. Sul piano gratuito Google può usare i dati inviati per migliorare i suoi prodotti: valuta se va bene per i dati dei tuoi clienti.
+
+1. Crea una chiave su https://aistudio.google.com/apikey e impostala in `.env`:
+
+   ```
+   GEMINI_API_KEY=...
+   ```
+
+2. Riavvia app e worker: `docker compose up -d app worker`.
+
+Con `AI_PROVIDER=auto` si usa Claude se c'è `ANTHROPIC_API_KEY`, altrimenti Gemini se c'è `GEMINI_API_KEY`; per scegliere a mano usa `AI_PROVIDER=claude`, `gemini` o `fake`. `GEMINI_MODEL` (default `gemini-flash-latest`) sceglie il modello. Istruzioni e formati delle risposte sono gli stessi di Claude.
+
 ## Test
 
 ```bash
 docker compose exec app php tests/isolation.php
 docker compose exec app php tests/meta_rules_check.php
 ```
+
+I test vanno eseguiti con il generatore di esempio: se nel `.env` c'è una chiave AI, metti prima `AI_PROVIDER=fake` e riavvia con `docker compose up -d app worker` (poi rimetti `auto`), altrimenti il worker elabora i lavori del test con l'AI vera e consuma crediti o quota.
 
 Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, analisi del sito (logo, contatti, strumenti, diagnosi), sponsorizzate con le regole di Meta e avvisi sui cambiamenti, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 

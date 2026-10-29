@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** Implementazione locale senza costi: risultati segnaposto per provare i flussi senza chiave API. */
 final class FakeMarketingAi implements MarketingAi
 {
-    private const NOTE = 'Testo segnaposto: imposta ANTHROPIC_API_KEY per generare contenuti reali.';
+    private const NOTE = 'Testo segnaposto: imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per generare contenuti reali.';
 
     public function contentVariants(array $brand, array $project, array $request): array
     {
@@ -47,7 +47,7 @@ final class FakeMarketingAi implements MarketingAi
             'products' => implode("\n", $products),
             'keywords' => $site['keywords'] ?: implode(', ', self::frequentWords(implode(' ', array_column($site['pages'], 'text')), $name)),
             'words_to_avoid' => '',
-            'brand_guidelines' => "Brand kit compilato in automatico dal sito, senza AI: completa pubblico e tono di voce, oppure imposta ANTHROPIC_API_KEY per un'analisi completa.",
+            'brand_guidelines' => "Brand kit compilato in automatico dal sito, senza AI: completa pubblico e tono di voce, oppure imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per un'analisi completa.",
             'primary_color' => $site['colors'][0] ?? null,
             'secondary_color' => $site['colors'][1] ?? null,
         ];
@@ -179,7 +179,7 @@ final class FakeMarketingAi implements MarketingAi
             'offers' => array_slice($site['menu'], 0, 6),
             'messages' => array_slice($site['headings'], 0, 5),
             'tone' => 'Da valutare: attiva l\'AI per un\'analisi del tono di voce.',
-            'opportunities' => ['Attiva ANTHROPIC_API_KEY per ricevere spunti su come differenziare il cliente.'],
+            'opportunities' => ['Attiva una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per ricevere spunti su come differenziare il cliente.'],
             'strengths' => array_map(fn($heading) => [
                 'strength' => "Mette in evidenza «{$heading}»",
                 'counter' => 'Racconta la stessa cosa con un caso reale del cliente e una foto vera.',
@@ -194,7 +194,7 @@ final class FakeMarketingAi implements MarketingAi
         $client = $brand['name'] ?? 'il cliente';
         return [
             'summary' => "{$competitor} ha " . count($ads) . ' inserzioni recenti' . ($longest ? "; quella attiva da più tempo ({$longest['days']} giorni) dice: «" . mb_substr($longest['title'] ?: $longest['text'], 0, 80) . '».' : '.')
-                . ' [Riepilogo di esempio: imposta ANTHROPIC_API_KEY per quello completo]',
+                . ' [Riepilogo di esempio: imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per quello completo]',
             'offer' => 'Da valutare leggendo le inserzioni qui sotto.',
             'audience' => 'Soprattutto ' . ($audience['top_age'] ? "persone tra {$audience['top_age']} anni" : 'un pubblico ampio') . ($audience['places'] ? ' a ' . implode(', ', array_slice($audience['places'], 0, 3)) : '') . '.',
             'tone' => 'Da valutare: attiva l\'AI per un\'analisi del tono.',
@@ -240,7 +240,7 @@ final class FakeMarketingAi implements MarketingAi
         return [
             'verdict' => "{$name} supera " . count($passing) . ' controlli su ' . count($checks) . '. '
                 . ($failing ? "Il punto debole principale è «{$failing[0]['label']}»: è da qui che conviene partire." : 'Le basi ci sono: ora serve spingere su contenuti e sponsorizzate.')
-                . ' [Analisi di esempio: imposta ANTHROPIC_API_KEY per la diagnosi completa]',
+                . ' [Analisi di esempio: imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per la diagnosi completa]',
             'business_model' => 'Da verificare con il titolare: come arrivano oggi i clienti e quanto vale ciascuno.',
             'value_proposition' => $site['description'] ?: ($site['title'] ?: 'Non chiara dal sito.'),
             'sharper_proposition' => "{$name}: " . (($site['tagline'] ?? '') ?: 'la scelta sicura per chi cerca qualità e un servizio vicino.'),
@@ -277,7 +277,7 @@ final class FakeMarketingAi implements MarketingAi
         return [
             'verdict' => $verdict,
             'summary' => ['ok' => 'L\'inserzione rispetta le regole controllate.', 'warning' => 'L\'inserzione si può pubblicare, ma ci sono punti da sistemare.', 'blocked' => 'Così com\'è Meta la respingerebbe.'][$verdict]
-                . ' [Revisione di esempio: imposta ANTHROPIC_API_KEY per quella completa]',
+                . ' [Revisione di esempio: imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per quella completa]',
             'issues' => $issues,
             'improved' => [
                 'primary_text' => mb_substr($first !== '' ? $first : $ad['primary_text'], 0, 125),
@@ -291,7 +291,7 @@ final class FakeMarketingAi implements MarketingAi
     public function policyChange(string $title, string $topic, array $added, array $removed): array
     {
         return [
-            'summary' => "Meta ha modificato la pagina «{$title}»: " . count($added) . ' frasi aggiunte e ' . count($removed) . ' tolte. Leggile qui sotto. [Riepilogo di esempio: imposta ANTHROPIC_API_KEY per quello completo]',
+            'summary' => "Meta ha modificato la pagina «{$title}»: " . count($added) . ' frasi aggiunte e ' . count($removed) . ' tolte. Leggile qui sotto. [Riepilogo di esempio: imposta una chiave AI (ANTHROPIC_API_KEY o GEMINI_API_KEY) per quello completo]',
             'impact' => 'media',
             'actions' => ["Ricontrolla le sponsorizzate che riguardano: {$topic}"],
         ];

@@ -96,11 +96,15 @@ interface MarketingAi
 
 final class MarketingAis
 {
-    /** AI_PROVIDER=claude|fake; se non indicato usa Claude solo quando c'è una chiave API. */
+    /** AI_PROVIDER=claude|gemini|fake; se non indicato usa Claude o Gemini quando c'è la loro chiave API, altrimenti le bozze di esempio. */
     public static function make(): MarketingAi
     {
         $provider = getenv('AI_PROVIDER') ?: 'auto';
-        if ($provider === 'auto') $provider = getenv('ANTHROPIC_API_KEY') ? 'claude' : 'fake';
-        return $provider === 'claude' ? new ClaudeMarketingAi() : new FakeMarketingAi();
+        if ($provider === 'auto') $provider = getenv('ANTHROPIC_API_KEY') ? 'claude' : (getenv('GEMINI_API_KEY') ? 'gemini' : 'fake');
+        return match ($provider) {
+            'claude' => new ClaudeMarketingAi(),
+            'gemini' => new GeminiMarketingAi(),
+            default => new FakeMarketingAi(),
+        };
     }
 }
