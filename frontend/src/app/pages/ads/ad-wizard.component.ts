@@ -6,12 +6,16 @@ import { Subject, Subscription, debounceTime, map, switchMap, timer, takeWhile }
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import {
-  AdCheck, AdDraft, AdIssue, AdObjective, AdPlan, AdPlanInput, AdVerdict, Brand, ContentItem, MetaRulebook, RuleSeverity, apiErrorMessage,
+  AdCheck, AdDraft, AdIssue, AdMusic, AdMusicSource, AdObjective, AdPlan, AdPlanInput, AdVerdict, Asset, Brand, ContentItem, MetaRulebook, RuleSeverity, apiErrorMessage,
 } from '../../core/models';
+import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { PostVisualComponent } from '../../shared/post-visual.component';
 import { publishableText } from '../../shared/publishing';
 
-const STEPS = ['Obiettivo', 'Pubblico', 'Budget', 'Testi', 'Pronta per Meta'];
+const STEPS = ['Obiettivo', 'Pubblico', 'Budget', 'Testi', 'Musica', 'Pronta per Meta'];
+/** Indici dei passaggi usati nella logica. */
+const TEXTS = 3, MUSIC = 4, READY = 5;
+const NO_MUSIC_CHOICE: AdMusic = { source: 'meta', mood: null, meta_picks: true, asset_id: null, track_name: null, rights_confirmed: false };
 const SEVERITY: Record<RuleSeverity, { icon: string; label: string }> = {
   block: { icon: 'ti-circle-x', label: 'Da correggere' },
   warn: { icon: 'ti-alert-triangle', label: 'Attenzione' },
@@ -34,7 +38,7 @@ function isoDate(d: Date): string {
 @Component({
   selector: 'app-ad-wizard',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, FormsModule, NgTemplateOutlet, PostVisualComponent],
+  imports: [AssetPreviewComponent, CurrencyPipe, DatePipe, FormsModule, NgTemplateOutlet, PostVisualComponent],
   template: `
     <div class="modal-backdrop" (click)="closed.emit()">
       <div class="modal ad-wizard" (click)="$event.stopPropagation()" role="dialog" aria-label="Sponsorizzata su Meta">
@@ -170,27 +174,98 @@ function isoDate(d: Date): string {
                       </label>
                     </div>
                   </div>
-                  <aside class="wizard-side">
-                    <div class="ad-preview">
-                      <div class="ad-preview-head">
-                        <span class="avatar" [style.background]="brand()?.primary_color ?? '#5B4BDB'"></span>
-                        <span><strong>{{ brand()?.name }}</strong><br /><small class="muted">Sponsorizzato</small></span>
-                      </div>
-                      <p class="ad-preview-text">{{ previewText() }}@if (ad.primary_text.length > rules()!.text_limits.primary_text) {<span class="muted">… Altro</span>}</p>
-                      @if (content()?.visual) {
-                        <app-post-visual [visual]="content()!.visual" [brand]="brand()" />
-                      } @else {
-                        <div class="ad-preview-media" [style.background]="brand()?.primary_color ?? '#5B4BDB'"><span>{{ ad.headline || 'La tua immagine' }}</span></div>
-                      }
-                      <div class="ad-preview-foot">
-                        <span><small class="muted">{{ host() }}</small><br /><strong>{{ ad.headline || 'Titolo' }}</strong>@if (ad.description) {<br /><small class="muted">{{ ad.description }}</small>}</span>
-                        <span class="btn ghost small">{{ ctaLabel(ad.cta) }}</span>
-                      </div>
-                    </div>
-                  </aside>
+                  <aside class="wizard-side"><ng-container *ngTemplateOutlet="previewTpl" /></aside>
                 </div>
               }
               @case (4) {
+                <div class="wizard-grid">
+                  <div class="wizard-main">
+                    <span class="field-label">Che musica mettiamo?</span>
+                    <div class="objective-grid">
+                      @for (s of rules()!.music.sources; track s.key) {
+                        <button type="button" class="payer-option" [class.on]="ad.music.source === s.key" (click)="setMusicSource(s.key)">
+                          <strong><i [class]="'ti ' + s.icon" aria-hidden="true"></i> {{ s.label }}@if (s.key === 'meta') { <span class="tag ai">Consigliato</span> }</strong>
+                          <span>{{ s.detail }}</span>
+                        </button>
+                      }
+                    </div>
+                    @switch (ad.music.source) {
+                      @case ('meta') {
+                        <span class="field-label">Atmosfera</span>
+                        <div class="mood-grid">
+                          @for (m of rules()!.music.moods; track m.key) {
+                            <button type="button" class="payer-option" [class.on]="ad.music.mood === m.key" (click)="ad.music.mood = m.key; changed()">
+                              <strong><i [class]="'ti ' + m.icon" aria-hidden="true"></i> {{ m.label }}</strong>
+                              @if (m.key === suggestedMood()) { <span class="tag ai">Adatta a {{ brand()?.name }}</span> }
+                              <span>{{ m.feel }}</span>
+                            </button>
+                          }
+                        </div>
+                        @if (mood(); as m) {
+                          <div class="music-search">
+                            <i class="ti ti-search" aria-hidden="true"></i>
+                            <span>Cerca nella libreria di Meta: <strong>{{ m.search }}</strong><br /><small class="muted">Ritmo {{ m.bpm }} battiti al minuto</small></span>
+                            <span class="grow"></span>
+                            <button type="button" class="btn ghost small" (click)="copy(m.search, 'search')"><i class="ti" [class]="copied() === 'search' ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i> {{ copied() === 'search' ? 'Copiato' : 'Copia' }}</button>
+                          </div>
+                        }
+                        <label class="toggle-row">
+                          <input type="checkbox" [(ngModel)]="ad.music.meta_picks" (ngModelChange)="changed()" />
+                          <span><strong>Lascia che Meta scelga il brano</strong><br />
+                            <small class="muted">Meta abbina all'inserzione un brano della sua libreria con questa atmosfera; prima di pubblicare puoi ascoltarlo e cambiarlo.</small></span>
+                        </label>
+                        <p class="muted small">I brani della libreria di Meta sono già autorizzati per le inserzioni: niente diritti da pagare e nessun rischio che l'audio venga tolto.</p>
+                      }
+                      @case ('own') {
+                        <label>Traccia
+                          <select [(ngModel)]="ad.music.asset_id" (ngModelChange)="setTrack($event)">
+                            <option [ngValue]="null">— Scegli una traccia —</option>
+                            @for (a of tracks(); track a.id) { <option [ngValue]="a.id">{{ a.original_name }}</option> }
+                          </select>
+                        </label>
+                        @if (auth.canEdit()) {
+                          <button type="button" class="link-btn" (click)="musicInput.click()" [disabled]="uploadingMusic()">
+                            @if (uploadingMusic()) { <span class="spinner small"></span> Carico… } @else { <i class="ti ti-upload" aria-hidden="true"></i> Carica una traccia (MP3, M4A, WAV, OGG) }
+                          </button>
+                          <input #musicInput type="file" hidden accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg" (change)="uploadMusic($event)" />
+                        }
+                        @if (ad.music.asset_id; as id) { <div class="music-player"><app-asset-preview [assetId]="id" kind="audio" /></div> }
+                        <label class="toggle-row">
+                          <input type="checkbox" [(ngModel)]="ad.music.rights_confirmed" (ngModelChange)="changed()" />
+                          <span><strong>Abbiamo la licenza per usarla nella pubblicità</strong><br />
+                            <small class="muted">Brano composto per il cliente, comprato con licenza commerciale o libero da diritti anche per la pubblicità. Le canzoni famose non vanno bene.</small></span>
+                        </label>
+                        @if (content()) {
+                          <div class="music-search">
+                            <i class="ti ti-movie" aria-hidden="true"></i>
+                            @if (videoBusy()) {
+                              <span><span class="spinner small"></span> Monto il video con la musica… di solito 10-20 secondi.</span>
+                            } @else {
+                              <span>Video verticale 9:16 per Reels e Storie, con la grafica del post, il logo e questa traccia.</span>
+                              <span class="grow"></span>
+                              <button type="button" class="btn primary small" (click)="makeVideo()" [disabled]="!ad.music.asset_id || !ad.music.rights_confirmed || !auth.canEdit()">
+                                <i class="ti ti-movie" aria-hidden="true"></i> {{ content()!.video_asset_id ? 'Rifai il video' : 'Crea il video' }}</button>
+                            }
+                          </div>
+                        } @else {
+                          <p class="muted small">Per montare qui il video con la musica, crea la sponsorizzata partendo da un post. Altrimenti aggiungi la traccia al tuo video prima di caricarlo su Meta.</p>
+                        }
+                      }
+                      @case ('none') {
+                        <p class="muted small">L'inserzione userà l'immagine, oppure il video con il suo audio originale.</p>
+                      }
+                    }
+                  </div>
+                  <aside class="wizard-side">
+                    @if (ad.music.source === 'own' && content()?.video_asset_id) {
+                      @if (content()!.video_asset_id; as v) { <div class="ad-video"><app-asset-preview [assetId]="v" kind="video" fit="contain" /></div> }
+                    } @else {
+                      <ng-container *ngTemplateOutlet="previewTpl" />
+                    }
+                  </aside>
+                </div>
+              }
+              @case (5) {
                 @if (saved(); as p) {
                   <div class="wizard-grid">
                     <div class="wizard-main">
@@ -208,6 +283,11 @@ function isoDate(d: Date): string {
                                   <i class="ti" [class]="copied() === row.label ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i></button></div>
                             }
                           </dl>
+                        }
+                        @if (p.music.source === 'own' && content()?.video_asset_id) {
+                          <h4>Video con la musica</h4>
+                          <p class="muted small">Scaricalo dal lettore e caricalo su Meta come contenuto multimediale dell'inserzione.</p>
+                          @if (content()!.video_asset_id; as v) { <div class="ad-video"><app-asset-preview [assetId]="v" kind="video" fit="contain" /></div> }
                         }
                         <p class="muted small">Il link ha i parametri UTM: in Analytics vedi le visite arrivate da questa sponsorizzata.</p>
                       </div>
@@ -244,7 +324,7 @@ function isoDate(d: Date): string {
               }
             }
 
-            @if (step() < 4) {
+            @if (step() < READY) {
               <section class="rule-check" aria-live="polite">
                 <div class="verdict" [attr.data-verdict]="stepVerdict()">
                   <i class="ti" [class]="'ti ' + (checking() ? 'ti-loader-2' : verdictInfo[stepVerdict()].icon)" aria-hidden="true"></i>
@@ -271,11 +351,11 @@ function isoDate(d: Date): string {
         <div class="modal-foot">
           @if (step() > 0) { <button type="button" class="btn ghost" (click)="goTo(step() - 1)">Indietro</button> }
           <span class="grow"></span>
-          @if (step() < 3) {
+          @if (step() < MUSIC) {
             <button type="button" class="btn primary" (click)="goTo(step() + 1)" [disabled]="!canGoTo(step() + 1)">Avanti</button>
-          } @else if (step() === 3 && auth.canEdit()) {
-            <button type="button" class="btn primary" (click)="save()" [disabled]="busy()"><i class="ti ti-check" aria-hidden="true"></i> {{ saved() ? 'Salva le modifiche' : 'Salva e prepara la scheda' }}</button>
-          } @else if (step() === 4 && auth.canEdit()) {
+          } @else if (step() === MUSIC && auth.canEdit()) {
+            <button type="button" class="btn primary" (click)="save()" [disabled]="busy() || videoBusy()"><i class="ti ti-check" aria-hidden="true"></i> {{ saved() ? 'Salva le modifiche' : 'Salva e prepara la scheda' }}</button>
+          } @else if (step() === READY && auth.canEdit()) {
             @if (saved()?.status === 'live') {
               <button type="button" class="btn ghost" (click)="setStatus('ended')" [disabled]="busy()">Segna come terminata</button>
             } @else if (saved()?.status !== 'ended') {
@@ -285,6 +365,27 @@ function isoDate(d: Date): string {
         </div>
       </div>
     </div>
+
+    <ng-template #previewTpl>
+      <div class="ad-preview">
+        <div class="ad-preview-head">
+          <span class="avatar" [style.background]="brand()?.primary_color ?? '#5B4BDB'"></span>
+          <span><strong>{{ brand()?.name }}</strong><br />
+            @if (step() >= MUSIC && musicLine()) { <small class="ad-preview-music"><i class="ti ti-music" aria-hidden="true"></i> {{ musicLine() }}</small> }
+            @else { <small class="muted">Sponsorizzato</small> }</span>
+        </div>
+        <p class="ad-preview-text">{{ previewText() }}@if (ad.primary_text.length > rules()!.text_limits.primary_text) {<span class="muted">… Altro</span>}</p>
+        @if (content()?.visual) {
+          <app-post-visual [visual]="content()!.visual" [brand]="brand()" />
+        } @else {
+          <div class="ad-preview-media" [style.background]="brand()?.primary_color ?? '#5B4BDB'"><span>{{ ad.headline || 'La tua immagine' }}</span></div>
+        }
+        <div class="ad-preview-foot">
+          <span><small class="muted">{{ host() }}</small><br /><strong>{{ ad.headline || 'Titolo' }}</strong>@if (ad.description) {<br /><small class="muted">{{ ad.description }}</small>}</span>
+          <span class="btn ghost small">{{ ctaLabel(ad.cta) }}</span>
+        </div>
+      </div>
+    </ng-template>
 
     <ng-template #issueTpl let-i>
       <div class="rule-issue" [attr.data-severity]="i.severity">
@@ -312,6 +413,8 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   private api = inject(ApiService);
   readonly steps = STEPS;
+  readonly MUSIC = MUSIC;
+  readonly READY = READY;
   readonly verdictInfo = VERDICT;
   readonly genders = [{ key: 'all' as const, label: 'Tutti' }, { key: 'female' as const, label: 'Donne' }, { key: 'male' as const, label: 'Uomini' }];
 
@@ -324,6 +427,10 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   busy = signal(false);
   error = signal<string | null>(null);
   copied = signal<string | null>(null);
+  /** Tracce audio della libreria: prima quelle del cliente, poi le altre. */
+  tracks = signal<Asset[]>([]);
+  uploadingMusic = signal(false);
+  videoBusy = signal(false);
   /** Cambia a ogni modifica, per ricalcolare anteprima e riepiloghi che leggono il modulo. */
   private version = signal(0);
 
@@ -331,7 +438,7 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     brand_id: 0, content_id: null, name: '', objective: 'traffic', special_category: 'none',
     audience: { location: 'Italia', radius_km: 0, age_min: 18, age_max: 65, genders: 'all', interests: [], advantage: true },
     daily_budget: 5, start_date: isoDate(new Date()), end_date: null,
-    primary_text: '', headline: '', description: '', cta: 'LEARN_MORE', url: '',
+    primary_text: '', headline: '', description: '', cta: 'LEARN_MORE', url: '', music: { ...NO_MUSIC_CHOICE },
   };
   interests = '';
   endDate = '';
@@ -360,6 +467,33 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     this.version();
     try { return new URL(this.ad.url).host.replace(/^www\./, '').toUpperCase(); } catch { return this.brand()?.website_url ? this.brand()!.website_url!.replace(/^https?:\/\/(www\.)?/, '').split('/')[0].toUpperCase() : ''; }
   });
+  /**
+   * Atmosfera adatta al cliente: quella con più parole in comune con settore, tono e descrizione;
+   * se nessuna corrisponde, quella consigliata per l'obiettivo.
+   */
+  suggestedMood = computed(() => {
+    this.version();
+    const music = this.rules()?.music;
+    if (!music) return null;
+    const b = this.brand();
+    const text = [b?.industry, b?.tone_of_voice, b?.summary, b?.products, b?.keywords].filter(Boolean).join(' ').toLowerCase();
+    let best: string | null = null;
+    let bestScore = 0;
+    for (const m of music.moods) {
+      const score = m.match.filter((stem) => text.includes(stem)).length;
+      if (score > bestScore) { best = m.key; bestScore = score; }
+    }
+    return best ?? music.by_objective[this.ad.objective] ?? null;
+  });
+  mood = computed(() => (this.version(), this.rules()?.music.moods.find((m) => m.key === this.ad.music.mood) ?? null));
+  /** La riga sotto il nome nell'anteprima, come nei Reels sponsorizzati. */
+  musicLine = computed(() => {
+    this.version();
+    const m = this.ad.music;
+    if (m.source === 'own') return m.track_name ? m.track_name.replace(/\.[a-z0-9]{2,4}$/i, '') : null;
+    if (m.source === 'meta') return `Sponsorizzato · musica di Meta${this.mood() ? ', ' + this.mood()!.label.toLowerCase() : ''}`;
+    return null;
+  });
   /** Nei primi passaggi si mostrano solo i problemi che riguardano quel passaggio, gli altri arrivano dopo. */
   visibleIssues = computed(() => {
     const issues = this.check()?.issues ?? [];
@@ -368,8 +502,9 @@ export class AdWizardComponent implements OnInit, OnDestroy {
       0: (i) => ['politics', 'gambling', 'tobacco', 'special_audience'].includes(i.key ?? ''),
       1: (i) => /age|audience|interests|teen/.test(i.key ?? ''),
       2: (i) => /budget|short_run/.test(i.key ?? ''),
+      [TEXTS]: (i) => !(i.key ?? '').startsWith('music_'),
     };
-    return step === 3 ? issues : issues.filter(byStep[step] ?? (() => true));
+    return step === MUSIC ? issues : issues.filter(byStep[step] ?? (() => true));
   });
   stepVerdict = computed((): AdVerdict => {
     const severities = this.visibleIssues().map((i) => i.severity);
@@ -404,6 +539,7 @@ export class AdWizardComponent implements OnInit, OnDestroy {
         { label: 'Invito all\'azione', value: this.ctaLabel(p.cta) },
         ...(p.url ? [{ label: 'URL del sito web', value: this.utm(p.url, p) }] : []),
       ] },
+      { title: '4. Musica', rows: this.musicRows(p, r) },
     ];
   });
 
@@ -414,7 +550,7 @@ export class AdWizardComponent implements OnInit, OnDestroy {
 
     if (this.plan) {
       this.load(this.plan);
-      this.step.set(4);
+      this.step.set(READY);
     } else {
       this.ad.brand_id = this.brandId ?? this.brands[0]?.id ?? 0;
       if (this.contentId) this.prefill(this.contentId);
@@ -437,12 +573,77 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   }
 
   canGoTo(i: number): boolean {
-    if (i === 4) return !!this.saved();
-    return i >= 0 && (i <= 3) && !!this.ad.brand_id;
+    if (i === READY) return !!this.saved();
+    return i >= 0 && i <= MUSIC && !!this.ad.brand_id;
   }
 
   goTo(i: number): void {
-    if (this.canGoTo(i)) this.step.set(i);
+    if (!this.canGoTo(i)) return;
+    if (i === MUSIC) {
+      if (this.ad.music.source === 'meta' && !this.ad.music.mood) this.ad.music.mood = this.suggestedMood();
+      this.loadTracks();
+      this.changed();
+    }
+    this.step.set(i);
+  }
+
+  setMusicSource(source: AdMusicSource): void {
+    // Tornando alla musica di Meta si riparte dalla scelta consigliata: Meta sceglie il brano.
+    if (source === 'meta' && this.ad.music.source !== 'meta') this.ad.music.meta_picks = true;
+    this.ad.music.source = source;
+    if (source === 'meta' && !this.ad.music.mood) this.ad.music.mood = this.suggestedMood();
+    this.changed();
+  }
+
+  setTrack(id: number | null): void {
+    this.ad.music.track_name = this.tracks().find((a) => a.id === id)?.original_name ?? null;
+    this.changed();
+  }
+
+  uploadMusic(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.uploadingMusic.set(true);
+    this.error.set(null);
+    this.api.uploadAsset(file, this.ad.brand_id || undefined).subscribe({
+      next: (asset) => {
+        this.uploadingMusic.set(false);
+        if (asset.kind !== 'audio') {
+          this.error.set('Il file caricato non è una traccia audio.');
+          return;
+        }
+        this.tracks.update((list) => [asset, ...list]);
+        this.ad.music.asset_id = asset.id;
+        this.setTrack(asset.id);
+      },
+      error: (e) => { this.uploadingMusic.set(false); this.error.set(apiErrorMessage(e)); },
+    });
+  }
+
+  /** Monta il video verticale del post con la traccia scelta (lo stesso montaggio del pulsante "Crea video" del post). */
+  makeVideo(): void {
+    const c = this.content();
+    if (!c || !this.ad.music.asset_id) return;
+    this.videoBusy.set(true);
+    this.error.set(null);
+    this.api.createVideo(c.id, 'story', this.ad.music.asset_id).pipe(
+      switchMap((job) => this.api.waitForJob(job.id)),
+    ).subscribe({
+      next: (job) => {
+        if (job.status === 'failed') {
+          this.videoBusy.set(false);
+          this.error.set(job.error ?? 'Montaggio del video non riuscito.');
+          return;
+        }
+        this.api.contentItem(c.id).subscribe({
+          next: (updated) => { this.content.set(updated); this.videoBusy.set(false); },
+          error: (e) => { this.videoBusy.set(false); this.error.set(apiErrorMessage(e)); },
+        });
+      },
+      error: (e) => { this.videoBusy.set(false); this.error.set(apiErrorMessage(e)); },
+    });
   }
 
   setObjective(key: AdObjective): void {
@@ -475,7 +676,7 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     const p = this.saved();
     const request = p ? this.api.updateAdPlan(p.id, this.ad) : this.api.createAdPlan(this.ad);
     request.subscribe({
-      next: (plan) => { this.load(plan); this.step.set(4); this.busy.set(false); this.changedPlan.emit(plan); },
+      next: (plan) => { this.load(plan); this.step.set(READY); this.busy.set(false); this.changedPlan.emit(plan); },
       error: (e) => { this.error.set(apiErrorMessage(e)); this.busy.set(false); },
     });
   }
@@ -529,6 +730,7 @@ export class AdWizardComponent implements OnInit, OnDestroy {
       brand_id: plan.brand_profile_id, content_id: plan.content_item_id, name: plan.name, objective: plan.objective, special_category: plan.special_category,
       audience: { ...plan.audience, interests: [...plan.audience.interests] }, daily_budget: plan.daily_budget, start_date: plan.start_date, end_date: plan.end_date,
       primary_text: plan.primary_text, headline: plan.headline, description: plan.description, cta: plan.cta, url: plan.url ?? '',
+      music: { ...(plan.music ?? NO_MUSIC_CHOICE) },
     };
     this.interests = plan.audience.interests.join(', ');
     this.endDate = plan.end_date ?? '';
@@ -553,6 +755,42 @@ export class AdWizardComponent implements OnInit, OnDestroy {
       },
       error: (e) => this.error.set(apiErrorMessage(e)),
     });
+  }
+
+  private loadTracks(): void {
+    const brandId = this.ad.brand_id;
+    this.api.assets().subscribe({
+      next: (assets) => {
+        const audio = assets.filter((a) => a.kind === 'audio');
+        this.tracks.set([...audio.filter((a) => a.brand_profile_id === brandId), ...audio.filter((a) => a.brand_profile_id !== brandId)]);
+      },
+      error: () => {},
+    });
+  }
+
+  /** Righe della scheda per la musica, nell'ordine in cui si fa su Gestione inserzioni. */
+  private musicRows(p: AdPlan, r: MetaRulebook): { label: string; value: string }[] {
+    const m = p.music;
+    if (m.source === 'own') {
+      return [
+        { label: 'Musica', value: this.content()?.video_asset_id
+          ? 'Traccia vostra già montata nel video: carica il video come contenuto multimediale dell\'inserzione.'
+          : 'Traccia vostra: aggiungila al video prima di caricarlo come contenuto multimediale dell\'inserzione.' },
+        { label: 'Traccia', value: m.track_name ?? '—' },
+        { label: 'Licenza', value: m.rights_confirmed ? 'Confermata per uso commerciale' : 'Da confermare prima di pubblicare' },
+      ];
+    }
+    if (m.source === 'none') return [{ label: 'Musica', value: 'Nessuna' }];
+    const mood = r.music.moods.find((x) => x.key === m.mood);
+    return [
+      { label: 'Musica', value: m.meta_picks
+        ? 'Nell\'inserzione, alla voce Musica, lascia che Meta scelga il brano adatto; prima di pubblicare puoi ascoltarlo e cambiarlo.'
+        : 'Nell\'inserzione, alla voce Musica, scegli un brano dalla libreria di Meta.' },
+      ...(mood ? [
+        { label: 'Atmosfera', value: `${mood.label} · ${mood.bpm} battiti al minuto` },
+        { label: 'Cerca nella libreria', value: mood.search },
+      ] : []),
+    ];
   }
 
   /** Aggiunge i parametri UTM, così le visite dalla sponsorizzata si riconoscono in Analytics. */

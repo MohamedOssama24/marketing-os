@@ -844,6 +844,13 @@ kbd { font: inherit; font-size: 0.7rem; font-weight: 600; color: var(--muted); b
   p { margin: 4px 0 0; color: var(--muted); } q { display: block; margin-top: 4px; font-style: italic; }
   .fix { color: var(--text); } }
 .improved { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: var(--primary-soft); p { margin: 0; white-space: pre-wrap; } .btn { align-self: flex-start; } }
+.mood-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  .payer-option { padding: 10px 12px; gap: 4px; font-size: 0.8rem; strong { font-size: 0.88rem; flex-wrap: wrap; } } }
+.music-search { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: var(--primary-soft); font-size: 0.88rem;
+  > i { font-size: 20px; color: var(--primary); } strong { color: var(--primary-ink); } .grow { flex: 1; } }
+.music-player { height: 86px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+.ad-preview-music { display: flex; align-items: center; gap: 4px; font-size: 0.76rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-video { border-radius: 12px; overflow: hidden; background: #000; max-height: 420px; }
 .sheet { h4 { margin: 16px 0 6px; } }
 .sheet-rows { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px;
   > div { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 10px; border-top: 1px solid var(--border); &:first-child { border-top: none; } }
@@ -863,7 +870,7 @@ kbd { font: inherit; font-size: 0.7rem; font-weight: 600; color: var(--muted); b
 .objective-list { margin: 0; > div { padding: 8px 0; border-top: 1px solid var(--border); } dt { font-weight: 600; display: flex; align-items: center; gap: 6px; i { color: var(--primary); } } dd { margin: 2px 0 0; color: var(--muted); font-size: 0.88rem; } }
 @media (max-width: 900px) {
   .wizard-grid, .rule-groups { grid-template-columns: 1fr; }
-  .objective-grid { grid-template-columns: 1fr 1fr; }
+  .objective-grid, .mood-grid { grid-template-columns: 1fr 1fr; }
   .sheet-rows > div { grid-template-columns: minmax(0, 1fr) auto; dt { grid-column: 1 / -1; } }
 }
 @media (max-width: 560px) { .objective-grid { grid-template-columns: 1fr; } }

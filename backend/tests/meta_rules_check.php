@@ -75,7 +75,20 @@ check('budget basso, durata breve, titolo lungo: consigli', !array_diff(['budget
 check('pulsante fuori elenco bloccato', in_array('cta_unknown', keys($r), true));
 check('blocchi prima degli avvisi', $r['issues'][0]['severity'] === 'block');
 
+$own = fn(array $music) => ad(['music' => $music + ['source' => 'own', 'asset_id' => 7, 'track_name' => 'jingle-pizzeria.mp3']]);
+$r = MetaRules::check($own(['rights_confirmed' => true]));
+check('traccia propria con licenza: passa', $r['verdict'] === 'ok', json_encode(keys($r)));
+$r = MetaRules::check($own([]));
+check('traccia propria senza licenza confermata: bloccata', $r['verdict'] === 'blocked' && in_array('music_rights', keys($r), true));
+$r = MetaRules::check($own(['asset_id' => null, 'rights_confirmed' => true]));
+check('traccia propria non scelta: bloccata', in_array('music_missing', keys($r), true));
+$r = MetaRules::check($own(['track_name' => 'Artista - Canzone (Official Video).mp3', 'rights_confirmed' => true]));
+check('brano commerciale riconosciuto dal nome', in_array('music_commercial', keys($r), true) && $r['verdict'] === 'warning');
+$r = MetaRules::check(ad(['objective' => 'awareness', 'music' => ['source' => 'none']]));
+check('notorietà senza musica: consiglio', in_array('music_none', keys($r), true) && $r['verdict'] === 'ok');
+
 $book = MetaRules::rulebook();
+check('atmosfera consigliata per ogni obiettivo', !array_diff(array_keys(MetaRules::OBJECTIVES), array_keys($book['music']['by_objective'])) && !array_diff($book['music']['by_objective'], array_keys(MetaRules::MUSIC_MOODS)));
 check('sei obiettivi di Meta', count($book['objectives']) === 6);
 check('ogni obiettivo propone pulsanti validi', !array_diff(array_merge(...array_column($book['objectives'], 'ctas')), array_keys(MetaRules::CTAS)));
 check('ogni regola punta a una pagina controllata', !in_array(null, array_column($book['rules'], 'source'), true));

@@ -886,8 +886,36 @@ export interface MetaRulebook {
   text_limits: { primary_text: number; headline: number; description: number };
   specs: { placement: string; ratio: string; size: string; note: string }[];
   budget: { min_daily: number; suggested_daily: number };
+  music: {
+    sources: { key: AdMusicSource; label: string; icon: string; detail: string }[];
+    moods: MusicMood[];
+    by_objective: Record<AdObjective, string>;
+  };
   rules: MetaRule[];
   monitor: MetaMonitor;
+}
+
+/** Atmosfera musicale: parole da cercare nella libreria di Meta e radici di parole del settore per cui è consigliata. */
+export interface MusicMood {
+  key: string;
+  label: string;
+  icon: string;
+  feel: string;
+  search: string;
+  bpm: string;
+  match: string[];
+}
+
+export type AdMusicSource = 'meta' | 'own' | 'none';
+
+export interface AdMusic {
+  source: AdMusicSource;
+  mood: string | null;
+  /** Con la musica di Meta: lascia che Meta scelga il brano adatto all'inserzione. */
+  meta_picks: boolean;
+  asset_id: number | null;
+  track_name: string | null;
+  rights_confirmed: boolean;
 }
 
 export interface AdIssue {
@@ -932,6 +960,7 @@ export interface AdPlanInput {
   description: string;
   cta: string;
   url: string;
+  music: AdMusic;
 }
 
 export interface AdReview {

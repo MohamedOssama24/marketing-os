@@ -9,6 +9,8 @@ declare(strict_types=1);
 final class AdPlanController
 {
     private const STATUSES = ['draft', 'ready', 'live', 'ended'];
+    /** Musica delle sponsorizzate salvate prima che si potesse scegliere: la libreria di Meta, senza atmosfera. */
+    private const NO_CHOICE_MUSIC = ['source' => 'meta', 'mood' => null, 'meta_picks' => true, 'asset_id' => null, 'track_name' => null, 'rights_confirmed' => false];
     private const SELECT = 'SELECT a.*, b.name AS brand_name, b.primary_color AS brand_color, b.meta_ad_account_id, j.status AS review_status, j.error AS review_error
         FROM ad_plans a JOIN brand_profiles b ON b.id=a.brand_profile_id LEFT JOIN jobs j ON j.id=a.review_job_id';
 
@@ -77,9 +79,10 @@ final class AdPlanController
         Tenant::findOrFail('brand_profiles', $brandId, $user['organization_id'], 'id');
         $contentId = Http::optionalInt($data, 'content_id');
         if ($contentId !== null) Tenant::findOrFail('content_items', $contentId, $user['organization_id'], 'id');
-        $fields = self::validated($data);
+        $fields = self::validated($data, $user['organization_id']);
         $fields['checks'] = json_encode(MetaRules::check($fields), JSON_UNESCAPED_UNICODE);
         $fields['audience'] = json_encode($fields['audience'], JSON_UNESCAPED_UNICODE);
+        $fields['music'] = json_encode($fields['music'], JSON_UNESCAPED_UNICODE);
         $pdo = Database::connection();
         $columns = array_keys($fields);
         $pdo->prepare('INSERT INTO ad_plans (organization_id, brand_profile_id, content_item_id, created_by, ' . implode(', ', $columns) . ') VALUES (?, ?, ?, ?' . str_repeat(', ?', count($columns)) . ')')
@@ -99,10 +102,11 @@ final class AdPlanController
         if (array_keys($data) === ['status']) {
             $fields['status'] = Http::oneOf($data, 'status', self::STATUSES);
         } else {
-            $fields = self::validated($data + $current);
+            $fields = self::validated($data + $current, $user['organization_id']);
             if (array_key_exists('status', $data)) $fields['status'] = Http::oneOf($data, 'status', self::STATUSES);
             $fields['checks'] = json_encode(MetaRules::check($fields), JSON_UNESCAPED_UNICODE);
             $fields['audience'] = json_encode($fields['audience'], JSON_UNESCAPED_UNICODE);
+            $fields['music'] = json_encode($fields['music'], JSON_UNESCAPED_UNICODE);
         }
         $set = implode(', ', array_map(fn($c) => "{$c}=?", array_keys($fields)));
         Database::connection()->prepare("UPDATE ad_plans SET {$set} WHERE id=? AND organization_id=?")->execute([...array_values($fields), $id, $user['organization_id']]);
@@ -160,6 +164,7 @@ final class AdPlanController
             'description' => $row['description'],
             'cta' => $row['cta'],
             'url' => $row['url'],
+            'music' => $row['music'] === null ? self::NO_CHOICE_MUSIC : json_decode($row['music'], true),
             'checks' => $row['checks'] === null ? null : json_decode($row['checks'], true),
             'review' => $row['review'] === null ? null : json_decode($row['review'], true),
             'reviewed_at' => $row['reviewed_at'],
@@ -187,11 +192,17 @@ final class AdPlanController
             'daily_budget' => is_numeric($data['daily_budget'] ?? null) ? (float)$data['daily_budget'] : 0,
             'start_date' => is_string($data['start_date'] ?? null) ? $data['start_date'] : null,
             'end_date' => is_string($data['end_date'] ?? null) ? $data['end_date'] : null,
+            'music' => is_array($data['music'] ?? null) ? [
+                'source' => (string)($data['music']['source'] ?? 'meta'),
+                'asset_id' => is_numeric($data['music']['asset_id'] ?? null) ? (int)$data['music']['asset_id'] : null,
+                'track_name' => is_string($data['music']['track_name'] ?? null) ? mb_substr($data['music']['track_name'], 0, 255) : '',
+                'rights_confirmed' => !empty($data['music']['rights_confirmed']),
+            ] : [],
             ...array_map(fn($key) => is_scalar($data[$key] ?? null) ? mb_substr((string)$data[$key], 0, 5000) : '', ['primary_text' => 'primary_text', 'headline' => 'headline', 'description' => 'description', 'cta' => 'cta', 'url' => 'url']),
         ];
     }
 
-    private static function validated(array $data): array
+    private static function validated(array $data, int $organizationId): array
     {
         $objective = Http::oneOf($data, 'objective', array_keys(MetaRules::OBJECTIVES));
         $audience = is_array($data['audience'] ?? null) ? $data['audience'] : [];
@@ -233,6 +244,31 @@ final class AdPlanController
             'description' => mb_substr(trim((string)($data['description'] ?? '')), 0, 255),
             'cta' => $cta,
             'url' => $url,
+            'music' => self::music($data['music'] ?? null, $organizationId),
+        ];
+    }
+
+    /** Musica scelta: la traccia propria deve essere un audio della libreria dell'organizzazione. */
+    private static function music(mixed $value, int $organizationId): array
+    {
+        $music = is_array($value) ? $value : [];
+        $source = Http::oneOf($music, 'source', array_keys(MetaRules::MUSIC_SOURCES), 'meta');
+        $mood = is_string($music['mood'] ?? null) && isset(MetaRules::MUSIC_MOODS[$music['mood']]) ? $music['mood'] : null;
+        $assetId = $source === 'own' ? Http::optionalInt($music, 'asset_id') : null;
+        $trackName = null;
+        if ($assetId !== null) {
+            $stmt = Database::connection()->prepare("SELECT original_name FROM assets WHERE id=? AND organization_id=? AND kind='audio'");
+            $stmt->execute([$assetId, $organizationId]);
+            $trackName = $stmt->fetchColumn();
+            if ($trackName === false) Http::validationError('La musica deve essere una traccia audio della tua libreria.');
+        }
+        return [
+            'source' => $source,
+            'mood' => $source === 'meta' ? $mood : null,
+            'meta_picks' => $source === 'meta' && (bool)($music['meta_picks'] ?? true),
+            'asset_id' => $assetId,
+            'track_name' => $trackName,
+            'rights_confirmed' => $source === 'own' && !empty($music['rights_confirmed']),
         ];
     }
 

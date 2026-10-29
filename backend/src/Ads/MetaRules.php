@@ -56,6 +56,45 @@ final class MetaRules
     public const SUGGESTED_DAILY_BUDGET = 5.0;
 
     /**
+     * Da dove arriva la musica della sponsorizzata. Nelle inserzioni Meta accetta solo musica con licenza per uso commerciale:
+     * la sua libreria è già autorizzata e gratuita, una traccia propria va confermata.
+     */
+    public const MUSIC_SOURCES = [
+        'meta' => ['label' => 'Musica di Meta', 'icon' => 'ti-brand-meta', 'detail' => 'Brani già autorizzati per le inserzioni, gratis. Si aggiunge in Gestione inserzioni, scegliendo il brano o lasciando che Meta scelga quello adatto.'],
+        'own' => ['label' => 'Una traccia nostra', 'icon' => 'ti-music', 'detail' => 'Una traccia della libreria del cliente, montata nel video della sponsorizzata. Serve la licenza per uso commerciale.'],
+        'none' => ['label' => 'Senza musica', 'icon' => 'ti-volume-off', 'detail' => 'Solo immagine, o video con il suo audio originale.'],
+    ];
+
+    /**
+     * Atmosfere musicali: parole da cercare nella libreria musicale di Meta (i generi in inglese funzionano ovunque),
+     * ritmo indicativo e radici di parole del settore o del tono del cliente per cui sono consigliate.
+     */
+    public const MUSIC_MOODS = [
+        'upbeat' => ['label' => 'Allegra e solare', 'icon' => 'ti-sun', 'feel' => 'Mette di buon umore: locali, turismo, offerte, eventi.', 'search' => 'upbeat, happy, summer pop', 'bpm' => '110-130',
+            'match' => ['ristorant', 'pizzer', 'gelat', 'turism', 'viagg', 'vacanz', 'event', 'festa', 'bambin', 'allegr', 'solar', 'amichevol', 'informal']],
+        'chill' => ['label' => 'Rilassata', 'icon' => 'ti-leaf', 'feel' => 'Calma e accogliente: benessere, caffè, casa, hotel.', 'search' => 'chill, lo-fi, acoustic calm', 'bpm' => '70-90',
+            'match' => ['spa', 'benesser', 'estetic', 'yoga', 'massagg', 'hotel', 'caff', 'arred', 'calm', 'rilass', 'accoglient']],
+        'elegant' => ['label' => 'Elegante', 'icon' => 'ti-diamond', 'feel' => 'Raffinata e sobria: moda, gioielli, vino, studi professionali.', 'search' => 'piano, jazz, lounge', 'bpm' => '60-90',
+            'match' => ['gioiell', 'moda', 'lusso', 'vino', 'cantin', 'gourmet', 'immobil', 'avvocat', 'notai', 'consulen', 'elegant', 'raffinat', 'professional', 'autorevol']],
+        'energetic' => ['label' => 'Energica', 'icon' => 'ti-bolt', 'feel' => 'Ritmo alto: sport, palestre, motori, saldi.', 'search' => 'workout, energetic, dance pop', 'bpm' => '120-140',
+            'match' => ['palestr', 'fitness', 'sport', 'crossfit', 'concessionari', 'moto', 'officin', 'energic', 'dinamic', 'grint', 'saldi']],
+        'inspiring' => ['label' => 'Emozionante', 'icon' => 'ti-heart', 'feel' => 'Racconta una storia: matrimoni, fotografi, salute, associazioni.', 'search' => 'cinematic, inspiring, emotional', 'bpm' => '80-110',
+            'match' => ['matrimon', 'sposi', 'fotograf', 'onlus', 'associazion', 'medic', 'dentist', 'clinic', 'sanit', 'emozion', 'ispira', 'empat']],
+        'modern' => ['label' => 'Moderna e tecnologica', 'icon' => 'ti-cpu', 'feel' => 'Pulita e innovativa: tecnologia, software, startup.', 'search' => 'electronic, corporate tech, future bass', 'bpm' => '100-125',
+            'match' => ['tecnolog', 'software', 'startup', 'informatic', 'digital', 'marketing', 'innovat', 'modern']],
+        'italian' => ['label' => 'Italiana e tradizionale', 'icon' => 'ti-tools-kitchen-2', 'feel' => 'Calore di casa: trattorie, prodotti tipici, artigiani.', 'search' => 'italian, mandolin, accordion folk', 'bpm' => '90-120',
+            'match' => ['trattori', 'osteri', 'agritur', 'tipic', 'alimentar', 'pastif', 'panific', 'macelle', 'artigian', 'tradizion', 'genuin', 'familiar']],
+        'playful' => ['label' => 'Divertente', 'icon' => 'ti-mood-happy', 'feel' => 'Leggera e simpatica: animali, giochi, contenuti ironici.', 'search' => 'funny, quirky, ukulele', 'bpm' => '100-120',
+            'match' => ['animal', 'veterinar', 'toelett', 'giocattol', 'giochi', 'ludot', 'divertent', 'ironic', 'simpatic', 'scherzos']],
+    ];
+
+    /** Atmosfera da proporre quando settore e tono del cliente non ne suggeriscono una. */
+    public const MUSIC_BY_OBJECTIVE = ['awareness' => 'upbeat', 'traffic' => 'modern', 'engagement' => 'playful', 'leads' => 'chill', 'app_promotion' => 'modern', 'sales' => 'energetic'];
+
+    /** Nomi di file che fanno pensare a un brano commerciale (scaricato da YouTube o Spotify, remix, versione ufficiale). */
+    private const COMMERCIAL_TRACK = '/official|ufficial|remix|feat\.|\bft\.|cover|spotify|youtube|lyrics|radio edit|\bvevo\b|videoclip/u';
+
+    /**
      * Regole controllate sul testo. Gravità: block = Meta la rifiuta o la legge la vieta; warn = rischio o limiti da rispettare; tip = consiglio.
      * I pattern sono espressioni regolari sul testo in minuscolo.
      */
@@ -176,6 +215,11 @@ final class MetaRules
             'text_limits' => self::TEXT_LIMITS,
             'specs' => self::SPECS,
             'budget' => ['min_daily' => self::MIN_DAILY_BUDGET, 'suggested_daily' => self::SUGGESTED_DAILY_BUDGET],
+            'music' => [
+                'sources' => array_map(fn($key, $s) => ['key' => $key] + $s, array_keys(self::MUSIC_SOURCES), self::MUSIC_SOURCES),
+                'moods' => array_map(fn($key, $m) => ['key' => $key] + $m, array_keys(self::MUSIC_MOODS), self::MUSIC_MOODS),
+                'by_objective' => self::MUSIC_BY_OBJECTIVE,
+            ],
             'rules' => $rules,
         ];
     }
@@ -183,7 +227,7 @@ final class MetaRules
     /**
      * Controlla una sponsorizzata prima di caricarla su Meta. Non chiama servizi esterni: è istantaneo.
      * @param array $ad objective, special_category, audience{age_min, age_max, genders, interests, location}, daily_budget, start_date, end_date,
-     *                  primary_text, headline, description, cta, url
+     *                  primary_text, headline, description, cta, url, music{source, asset_id, track_name, rights_confirmed}
      * @return array{verdict: string, issues: list<array{key: string, severity: string, title: string, why: string, fix: string, excerpt: string, source: ?string}>, suggested_category: ?string}
      */
     public static function check(array $ad): array
@@ -281,6 +325,23 @@ final class MetaRules
             $add('cta_unknown', 'block', 'Pulsante non valido', 'Meta accetta solo i pulsanti del suo elenco.', 'Scegli un pulsante dall\'elenco.');
         }
 
+        // Musica: nelle inserzioni Meta accetta solo brani con licenza per uso commerciale.
+        $music = is_array($ad['music'] ?? null) ? $ad['music'] : [];
+        $source = $music['source'] ?? 'meta';
+        if ($source === 'own') {
+            $track = trim((string)($music['track_name'] ?? ''));
+            if (empty($music['asset_id'])) {
+                $add('music_missing', 'block', 'Manca la traccia', 'Hai scelto una traccia vostra ma non l\'hai ancora selezionata.', 'Scegli o carica una traccia, oppure usa la musica di Meta.');
+            } elseif (preg_match(self::COMMERCIAL_TRACK, mb_strtolower($track))) {
+                $add('music_commercial', 'warn', 'Sembra un brano commerciale', 'Dal nome del file sembra una canzone famosa o scaricata da YouTube o Spotify: Meta riconosce questi brani e toglie l\'audio o blocca l\'inserzione.', 'Usa un brano libero da diritti o la musica di Meta, già autorizzata.', $track);
+            }
+            if (empty($music['rights_confirmed'])) {
+                $add('music_rights', 'block', 'Diritti della musica da confermare', 'Nelle inserzioni Meta accetta solo musica con licenza per uso commerciale: senza, toglie l\'audio o rifiuta l\'inserzione e il titolare dei diritti può segnalarla.', 'Conferma di avere la licenza (o che il brano è libero da diritti), oppure scegli la musica di Meta.');
+            }
+        } elseif ($source === 'none' && in_array($objective, ['awareness', 'engagement'], true)) {
+            $add('music_none', 'tip', 'Senza musica', 'Nei Reels e nelle Storie quasi tutti guardano con l\'audio acceso: con la musica l\'inserzione si fa notare di più.', 'Scegli «Musica di Meta»: è gratis e già autorizzata.');
+        }
+
         // Budget e durata.
         $budget = (float)($ad['daily_budget'] ?? 0);
         if ($budget < self::MIN_DAILY_BUDGET) {
@@ -311,6 +372,7 @@ final class MetaRules
         $lines[] = '- Testi consigliati: testo principale fino a ' . self::TEXT_LIMITS['primary_text'] . ' caratteri, titolo fino a ' . self::TEXT_LIMITS['headline'] . ', descrizione fino a ' . self::TEXT_LIMITS['description'] . '.';
         $lines[] = '- Nessun riferimento a qualità personali di chi legge, nessuna promessa irrealistica, nessuna immagine prima/dopo, nessun uso dei marchi di Meta come approvazione.';
         $lines[] = '- La pagina di destinazione deve funzionare, corrispondere all\'inserzione e non essere ingannevole.';
+        $lines[] = '- La musica deve avere la licenza per uso commerciale: va bene la libreria musicale di Meta, non le canzoni famose senza licenza.';
         return implode("\n", $lines);
     }
 
