@@ -8,6 +8,8 @@ RUN apk add --no-cache ffmpeg font-inter freetype libpng libjpeg-turbo libwebp \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install gd \
     && apk del .gd-build
+# Loghi in SVG (molti siti li hanno solo così): convertiti in PNG per il brand kit.
+RUN apk add --no-cache rsvg-convert
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/php.ini /usr/local/etc/php/conf.d/marketing-os.ini
 

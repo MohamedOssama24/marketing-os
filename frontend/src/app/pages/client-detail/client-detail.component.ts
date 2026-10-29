@@ -12,6 +12,7 @@ import { BrandFormComponent } from '../../shared/brand-form.component';
 import { MetaAdsSetupComponent } from '../../shared/meta-ads-setup.component';
 import { CompetitorsPanelComponent } from '../../shared/competitors-panel.component';
 import { CompetitionStudyComponent } from '../../shared/competition-study.component';
+import { SiteAnalysisComponent } from '../../shared/site-analysis.component';
 import { PortalPanelComponent } from '../../shared/portal-panel.component';
 import { StylePanelComponent } from '../../shared/style-panel.component';
 import { CHANNEL_ICONS } from '../../shared/post-card.component';
@@ -22,7 +23,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent, PortalPanelComponent, StylePanelComponent, CompetitorsPanelComponent, CompetitionStudyComponent],
+  imports: [FormsModule, DatePipe, RouterLink, AssetPreviewComponent, BrandFormComponent, MetaAdsSetupComponent, PortalPanelComponent, StylePanelComponent, CompetitorsPanelComponent, CompetitionStudyComponent, SiteAnalysisComponent],
   template: `
     <a routerLink="/clients" class="back"><i class="ti ti-arrow-left" aria-hidden="true"></i> Clienti</a>
 
@@ -201,6 +202,7 @@ const CAMPAIGN_CHANNELS: Channel[] = ['instagram', 'facebook', 'linkedin', 'blog
           <app-portal-panel [brandId]="b.id" />
           <app-style-panel [brandId]="b.id" />
         </div>
+        <app-site-analysis [brand]="b" (brandChanged)="reloadBrand(b.id)" />
         <app-competitors-panel [brandId]="b.id" [campaigns]="campaigns()" (changed)="study.reload()" />
         <app-competition-study #study [brand]="b" (brandChanged)="reloadBrand(b.id)" />
         <app-meta-ads-setup [brandId]="b.id" />

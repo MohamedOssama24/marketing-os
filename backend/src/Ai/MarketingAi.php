@@ -76,6 +76,14 @@ interface MarketingAi
      * @return array{market: string, gaps: list<string>, proposal: array{primary_color: string, secondary_color: string, font_family: string, photo_style: string, tone_of_voice: string, formats: list<string>, rationale: string}}
      */
     public function styleProposal(array $brand, array $market): array;
+
+    /**
+     * Diagnosi strategica dell'attività a partire dal sito, come la farebbe un amministratore delegato:
+     * giudizio, modello di business, proposta di valore, pagella per area, SWOT, priorità, nuove entrate, indicatori e domande al cliente.
+     * @param list<array{key: string, ok: bool, label: string, detail: string}> $checks
+     * @return array<string, mixed> vedi SiteAnalysis::clean() per la forma
+     */
+    public function siteAnalysis(array $brand, array $site, array $checks): array;
 }
 
 final class MarketingAis

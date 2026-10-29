@@ -311,6 +311,11 @@ Fino a 5 per cliente. Il worker legge il sito (protezione SSRF) e l'AI riassume 
 - `POST /brands/{id}/competition/apply` — `{ "parts": ["colors", "font", "tone"] }`: copia nel brand kit le parti scelte, ricordando i valori di prima.
 - `POST /brands/{id}/competition/undo` — rimette i valori di prima dell'applicazione.
 
+### Analisi del sito e diagnosi strategica
+
+- `GET /brands/{id}/site-analysis` — `profile` (`facts`: nome, orari, fascia di prezzo, valutazione, `contacts` con telefoni, email, WhatsApp, indirizzo e partita IVA, `other_socials`; `signals`: piattaforma, strumenti di misura, cookie, chat, funzioni, dati tecnici; `socials`, `colors`, `fonts`, `checks`, `score`; `null` se il sito non è ancora stato letto), `analysis` (`verdict`, `business_model`, `value_proposition`, `sharper_proposition`, `target`, `scorecard` con voti 1-10 per area, `swot`, `priorities` con `impact`/`effort`/`when`/`kpi`, `quick_wins`, `revenue_ideas`, `kpis`, `questions`), `profile_at`, `analyzed_at`, `analyzing`, `job_error`.
+- `POST /brands/{id}/site-analysis` — owner, admin, editor. Rilegge il sito del brand kit e chiede la diagnosi all'AI (`202`); `422` se manca l'indirizzo del sito. Se il cliente non ha ancora un logo, lo prende dal sito. La lettura (`profile`) si aggiorna anche a ogni analisi del sito dal brand kit; per un cliente nuovo la diagnosi parte da sola.
+
 ## Fatturazione
 
 Solo owner e admin. Una fattura al mese per cliente, con stati `to_invoice` → `invoiced` → `paid`. La fattura elettronica si emette nel gestionale o dal commercialista: qui si preparano gli importi, si registra il numero e si segue il pagamento.

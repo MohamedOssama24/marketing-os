@@ -208,6 +208,44 @@ final class FakeMarketingAi implements MarketingAi
         ];
     }
 
+    /** Diagnosi di esempio costruita sui controlli automatici: i punti mancanti diventano le priorità. */
+    public function siteAnalysis(array $brand, array $site, array $checks): array
+    {
+        $name = $brand['name'] ?? self::nameFromTitle($site['title'], $site['host'] ?? '');
+        $failing = array_values(array_filter($checks, fn($c) => !$c['ok']));
+        $passing = array_values(array_filter($checks, fn($c) => $c['ok']));
+        $urgent = ['conversion', 'contacts', 'tracking', 'pixel', 'mobile', 'trust'];
+        $scorecard = [];
+        foreach (array_keys(SiteAnalysis::AREAS) as $area) {
+            $score = SiteAnalysis::areaScore($area, $checks);
+            if ($score !== null) $scorecard[] = ['area' => $area, 'score' => $score, 'note' => 'Voto calcolato dai controlli automatici. [Esempio]'];
+        }
+        return [
+            'verdict' => "{$name} supera " . count($passing) . ' controlli su ' . count($checks) . '. '
+                . ($failing ? "Il punto debole principale è «{$failing[0]['label']}»: è da qui che conviene partire." : 'Le basi ci sono: ora serve spingere su contenuti e sponsorizzate.')
+                . ' [Analisi di esempio: imposta ANTHROPIC_API_KEY per la diagnosi completa]',
+            'business_model' => 'Da verificare con il titolare: come arrivano oggi i clienti e quanto vale ciascuno.',
+            'value_proposition' => $site['description'] ?: ($site['title'] ?: 'Non chiara dal sito.'),
+            'sharper_proposition' => "{$name}: " . (($site['tagline'] ?? '') ?: 'la scelta sicura per chi cerca qualità e un servizio vicino.'),
+            'target' => $brand['audience'] ?? 'Clienti della zona che cercano online prima di scegliere.',
+            'scorecard' => $scorecard,
+            'swot' => [
+                'strengths' => array_map(fn($c) => $c['label'], array_slice($passing, 0, 3)),
+                'weaknesses' => array_map(fn($c) => $c['label'], array_slice($failing, 0, 3)),
+                'opportunities' => ['Contenuti social costanti con foto vere', 'Sponsorizzate locali mirate'],
+                'threats' => ['Concorrenti più presenti online'],
+            ],
+            'priorities' => array_map(fn($c) => [
+                'title' => "Sistema «{$c['label']}»", 'why' => $c['detail'], 'how' => 'Passi da definire con l\'agenzia. [Esempio]',
+                'impact' => in_array($c['key'], $urgent, true) ? 'alta' : 'media', 'effort' => 'basso', 'when' => 'Entro 30 giorni', 'kpi' => 'Richieste di contatto al mese',
+            ], array_slice($failing, 0, 6)),
+            'quick_wins' => array_map(fn($c) => $c['label'], array_slice(array_filter($failing, fn($c) => in_array($c['key'], ['title', 'description', 'socials'], true)), 0, 3)),
+            'revenue_ideas' => ['Un pacchetto o abbonamento per i clienti abituali'],
+            'kpis' => [['name' => 'Richieste di contatto al mese', 'target' => '+30% in 90 giorni'], ['name' => 'Visite al sito dai social', 'target' => '+50% in 90 giorni']],
+            'questions' => ['Quali sono i clienti che rendono di più?', 'Da dove arrivano oggi i clienti nuovi?', 'Qual è il periodo dell\'anno più forte?'],
+        ];
+    }
+
     private static function nameFromTitle(string $title, string $host): string
     {
         foreach (preg_split('/\s+[|\-–—:·•]\s+/u', $title) ?: [] as $part) {

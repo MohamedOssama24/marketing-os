@@ -2,7 +2,8 @@
 
 Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx e un worker in Docker, frontend Angular 17.
 
-- **Dal sito alla campagna**: inserisci il sito di un cliente e l'AI ne ricava brand kit, colori e logo; poi genera strategia e calendario di post con grafiche nei colori del brand.
+- **Dal sito alla campagna**: inserisci il sito di un cliente e l'AI ne ricava brand kit, colori, carattere e logo (scelto tra intestazione, link alla home e dati schema.org, scartando bollini di partner e pagamenti; gli SVG diventano PNG); poi genera strategia e calendario di post con grafiche nei colori del brand.
+- **Analisi da CEO**: per ogni cliente, cosa c'è sul sito (telefoni, email, WhatsApp, indirizzo, partita IVA, orari, valutazioni, social, piattaforma, Analytics e Pixel di Meta, modi di contattare o comprare, velocità) con 15 controlli, e una diagnosi strategica dell'AI: giudizio franco, come guadagna l'attività, proposta di valore riscritta, pagella per area, SWOT, priorità ordinate per impatto e sforzo, cose da fare questa settimana, nuove entrate, obiettivi a 90 giorni e domande da fare al titolare. Parte da sola per ogni cliente nuovo.
 - **Anteprime realistiche** dei post (Instagram, Facebook, LinkedIn, blog, email) con grafica esportabile in PNG.
 - **Calendario** mensile con trascinamento, **approvazioni** con note di revisione, **dashboard** della settimana.
 - **Sponsorizzate**: spesa, clic e risultati per cliente, inseriti a mano o importati dal CSV di Gestione inserzioni di Meta, con grafici per mese e per cliente. Nella scheda del cliente, una guida a passaggi per collegare l'account pubblicitario Meta e scegliere chi paga (il cliente con la sua carta o l'agenzia, che rifattura).
@@ -45,7 +46,7 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 docker compose exec app php tests/isolation.php
 ```
 
-Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, analisi del sito (logo, contatti, strumenti, diagnosi), protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 
 Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
 

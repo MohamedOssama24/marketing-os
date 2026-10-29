@@ -701,6 +701,60 @@ $undone = req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data'];
 check('Annulla rimette lo stile di prima (anche dopo due applicazioni)', $undone['primary_color'] === $before['primary_color'] && $undone['font_family'] === $before['font_family'], json_encode([$before['primary_color'], $undone['primary_color']]));
 expectStatus('Niente da annullare due volte', req('POST', "/brands/{$brandA['id']}/competition/undo", $editor), 422);
 
+echo "\nAnalisi del sito e diagnosi\n";
+// Pagina di prova letta senza rete: si chiamano direttamente i passaggi interni del lettore.
+$reader = fn(string $method, ...$args) => (new ReflectionMethod(SiteReader::class, $method))->invoke(null, ...$args);
+$page = <<<'HTML'
+<html lang="it"><head><title>Forno Rossi | Pane e dolci a Pescara</title><meta name="viewport" content="width=device-width">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Bakery","name":"Forno Rossi","telephone":"+39 085 123456",
+"address":{"@type":"PostalAddress","streetAddress":"Via Roma 1","postalCode":"65121","addressLocality":"Pescara"},
+"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.7","reviewCount":"128"},"sameAs":["https://www.instagram.com/fornorossi"]}</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST"></script><script>fbq('init', '1');</script>
+</head><body>
+<header><a href="/"><img src="/img/forno-rossi.png" alt="Forno Rossi"></a></header>
+<main><h1>Pane fresco ogni mattina</h1><form><input type="email" name="email"><textarea name="messaggio"></textarea></form></main>
+<footer><div class="partners"><img src="/img/logo-bio-certificato.png" alt="logo bio"></div>
+<p>Forno Rossi srl - P.IVA 01234567890 - <a href="https://wa.me/393331234567">Scrivici</a> - info@fornorossi.it</p></footer>
+</body></html>
+HTML;
+$xpath = new DOMXPath($reader('dom', $page));
+$structured = $reader('structuredData', $xpath);
+$logos = $reader('logos', $xpath, 'https://fornorossi.example/', 'fornorossi.example', '', 'Forno Rossi');
+check('Il logo è quello dell\'intestazione, non il bollino del partner', str_ends_with($logos[0]['url'] ?? '', '/img/forno-rossi.png') && !in_array('https://fornorossi.example/img/logo-bio-certificato.png', array_column($logos, 'url'), true), json_encode($logos));
+check('Dati dell\'attività dai dati strutturati', $structured['organization']['name'] === 'Forno Rossi' && $structured['organization']['address'] === 'Via Roma 1, 65121 Pescara'
+    && $structured['organization']['rating'] === ['value' => 4.7, 'count' => 128], json_encode($structured['organization']));
+$fullText = 'Forno Rossi srl - P.IVA 01234567890 - Scrivici - info@fornorossi.it';
+$contacts = $reader('contacts', $xpath, $fullText, $structured['organization']);
+check('Contatti: telefono, email, WhatsApp e partita IVA', $contacts['phones'] === ['+39 085 123456'] && $contacts['emails'] === ['info@fornorossi.it'] && $contacts['whatsapp'] !== null && $contacts['vat'] === '01234567890', json_encode($contacts));
+$signals = $reader('signals', $page, $xpath, $structured, 0.8, $contacts, '/ scrivici', mb_strtolower($fullText));
+check('Strumenti riconosciuti: Analytics, Pixel, modulo, telefono', in_array('Google Analytics', $signals['tools'], true) && in_array('Pixel di Meta', $signals['tools'], true)
+    && $signals['features']['contact_form'] && $signals['features']['reviews'] && $signals['mobile'], json_encode($signals));
+$richSite = $fakeSite + ['facts' => ['contacts' => $contacts], 'signals' => $signals];
+$richChecks = SiteChecks::run($richSite);
+check('Con gli strumenti i controlli diventano 15', count($richChecks) === 15 && count($fakeChecks) === 8);
+check('Pixel e conversione superati', array_column($richChecks, 'ok', 'key')['pixel'] && array_column($richChecks, 'ok', 'key')['conversion']);
+$cleaned = SiteAnalysis::clean(['verdict' => 'Ok', 'scorecard' => [['area' => 'Inventata', 'score' => 5, 'note' => ''], ['area' => 'Fiducia e prove', 'score' => 15, 'note' => 'x']],
+    'priorities' => [['title' => 'Fai X', 'impact' => 'enorme', 'effort' => 'basso', 'when' => 'Domani'], ['title' => '']]]);
+check('Diagnosi ripulita: aree note, voti 1-10, valori ammessi', $cleaned['scorecard'] === [['area' => 'Fiducia e prove', 'score' => 10, 'note' => 'x']]
+    && count($cleaned['priorities']) === 1 && $cleaned['priorities'][0]['impact'] === 'media' && $cleaned['priorities'][0]['when'] === 'Entro 30 giorni', json_encode($cleaned));
+$fakeDiagnosis = SiteAnalysis::clean((new FakeMarketingAi())->siteAnalysis(['name' => 'Forno Rossi'], $richSite, $richChecks));
+check('Diagnosi di esempio con pagella e priorità', $fakeDiagnosis['verdict'] !== '' && count($fakeDiagnosis['scorecard']) === count(SiteAnalysis::AREAS) && $fakeDiagnosis['priorities'] !== []);
+
+$siteState = req('GET', "/brands/{$brandA['id']}/site-analysis", $a['token']);
+expectStatus('Analisi del sito leggibile', $siteState, 200);
+check('Senza lettura né diagnosi', array_key_exists('profile', $siteState[1]['data'] ?? []) && $siteState[1]['data']['profile'] === null && $siteState[1]['data']['analysis'] === null);
+expectStatus('B non vede l\'analisi di A', req('GET', "/brands/{$brandA['id']}/site-analysis", $b['token']), 404);
+expectStatus('B non avvia l\'analisi di A', req('POST', "/brands/{$brandA['id']}/site-analysis", $b['token']), 404);
+expectStatus('Viewer non avvia l\'analisi', req('POST', "/brands/{$brandA['id']}/site-analysis", $viewer), 403);
+req('PATCH', "/brands/{$brandA['id']}", $editor, ['website_url' => '']);
+expectStatus('Senza sito niente analisi', req('POST', "/brands/{$brandA['id']}/site-analysis", $editor), 422);
+req('PATCH', "/brands/{$brandA['id']}", $editor, ['website_url' => 'http://127.0.0.1']);
+$started = req('POST', "/brands/{$brandA['id']}/site-analysis", $editor);
+expectStatus('Analisi avviata (202)', $started, 202);
+waitJob((int)($started[1]['data']['job_id'] ?? 0), $editor);
+$siteState = req('GET', "/brands/{$brandA['id']}/site-analysis", $a['token'])[1]['data'];
+check('Un sito interno non viene letto e l\'errore si vede', !$siteState['analyzing'] && ($siteState['job_error'] ?? '') !== '' && $siteState['analysis'] === null, json_encode($siteState));
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

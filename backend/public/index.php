@@ -173,6 +173,8 @@ $router->add('GET', '/api/v1/brands/{brandId}/competition', [CompetitionControll
 $router->add('POST', '/api/v1/brands/{brandId}/competition', [CompetitionController::class, 'start']);
 $router->add('POST', '/api/v1/brands/{brandId}/competition/apply', [CompetitionController::class, 'apply']);
 $router->add('POST', '/api/v1/brands/{brandId}/competition/undo', [CompetitionController::class, 'undo']);
+$router->add('GET', '/api/v1/brands/{brandId}/site-analysis', [SiteAnalysisController::class, 'show']);
+$router->add('POST', '/api/v1/brands/{brandId}/site-analysis', [SiteAnalysisController::class, 'start']);
 
 // Pannello della piattaforma (solo amministratori di piattaforma)
 $router->add('GET', '/api/v1/admin/overview', [AdminController::class, 'overview']);

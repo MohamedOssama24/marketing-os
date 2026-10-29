@@ -11,7 +11,7 @@ final class SafeHttp
     private const MAX_REDIRECTS = 3;
     private const USER_AGENT = 'MarketingOS-SiteAnalyzer/1.0 (+https://marketing-os.local)';
 
-    /** @return array{url: string, status: int, content_type: string, body: string} */
+    /** @return array{url: string, status: int, content_type: string, body: string, seconds: float} */
     public static function get(string $url, int $maxBytes = 2_000_000, int $timeoutSeconds = 10): array
     {
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
@@ -38,6 +38,7 @@ final class SafeHttp
             $contentType = strtolower((string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
             $location = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
             $error = curl_errno($ch);
+            $seconds = (float)curl_getinfo($ch, CURLINFO_TOTAL_TIME);
             curl_close($ch);
 
             if ($error === CURLE_WRITE_ERROR) throw new SiteException('La pagina è troppo grande.');
@@ -47,7 +48,7 @@ final class SafeHttp
                 continue;
             }
             if ($status >= 400) throw new SiteException("Il sito ha risposto con un errore ({$status}).");
-            return ['url' => $url, 'status' => $status, 'content_type' => $contentType, 'body' => $body];
+            return ['url' => $url, 'status' => $status, 'content_type' => $contentType, 'body' => $body, 'seconds' => round($seconds, 2)];
         }
         throw new SiteException('Troppi reindirizzamenti.');
     }

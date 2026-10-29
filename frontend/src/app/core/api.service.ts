@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
   API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
-  NewProject, Project, Role, TeamMember, Visual,
+  NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
 } from './models';
 
 type Data<T> = { data: T };
@@ -265,4 +265,6 @@ export class ApiService {
   startCompetition = (brandId: number) => this.post<CompetitionStudy>(`/brands/${brandId}/competition`);
   applyStyle = (brandId: number, parts: StylePart[]) => this.post<CompetitionStudy>(`/brands/${brandId}/competition/apply`, { parts });
   undoStyle = (brandId: number) => this.post<CompetitionStudy>(`/brands/${brandId}/competition/undo`);
+  siteAnalysis = (brandId: number) => this.get<SiteAnalysisState>(`/brands/${brandId}/site-analysis`);
+  startSiteAnalysis = (brandId: number) => this.post<SiteAnalysisState>(`/brands/${brandId}/site-analysis`);
 }

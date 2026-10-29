@@ -12,7 +12,9 @@ final class SiteChecks
         $descLength = mb_strlen($site['description']);
         $socials = array_keys($site['socials']);
         $urls = implode(' ', array_column($site['pages'], 'url'));
-        $hasContacts = (bool)preg_match('/(\+39|tel\.?|telefono|whatsapp)\s*[:\d(]|\b\d{2,4}[\s.]?\d{6,8}\b|@[a-z0-9-]+\.[a-z]{2,}/iu', $text);
+        $found = $site['facts']['contacts'] ?? [];
+        $hasContacts = !empty($found['phones']) || !empty($found['emails']) || !empty($found['whatsapp'])
+            || (bool)preg_match('/(\+39|tel\.?|telefono|whatsapp)\s*[:\d(]|\b\d{2,4}[\s.]?\d{6,8}\b|@[a-z0-9-]+\.[a-z]{2,}/iu', $text);
         $checks = [
             ['https', str_starts_with($site['url'], 'https://'), 'Sito protetto (HTTPS)',
                 str_starts_with($site['url'], 'https://') ? 'Il sito usa una connessione sicura.' : 'Il sito non usa HTTPS: i browser lo segnalano come "non sicuro".'],
@@ -31,6 +33,33 @@ final class SiteChecks
             ['brand', count($site['colors']) > 0 && $site['logo_candidates'] !== [], 'Identità visiva riconoscibile',
                 count($site['colors']) > 0 ? 'Colori del marchio riconosciuti: ' . implode(', ', array_slice($site['colors'], 0, 3)) . '.' : 'Non emergono colori del marchio coerenti.'],
         ];
+
+        // Controlli sugli strumenti del sito: solo per le letture che li hanno (quelle salvate prima non li avevano).
+        if (isset($site['signals'])) {
+            $s = $site['signals'];
+            $measuring = array_values(array_diff($s['tools'], ['Hotjar', 'Microsoft Clarity']));
+            $ways = array_keys(array_filter([
+                'modulo di contatto' => $s['features']['contact_form'], 'WhatsApp' => $s['features']['whatsapp'], 'prenotazione online' => $s['features']['booking'],
+                'acquisto online' => $s['features']['ecommerce'], 'chat' => $s['chat'] !== null,
+            ]));
+            $seconds = str_replace('.', ',', (string)$s['seconds']);
+            $checks = [...$checks,
+                ['mobile', $s['mobile'], 'Adatto al telefono',
+                    $s['mobile'] ? 'La pagina si adatta allo schermo del telefono.' : 'Manca l\'impostazione per i telefoni: da mobile la pagina appare rimpicciolita.'],
+                ['speed', $s['seconds'] > 0 && $s['seconds'] <= 2.5, 'Pagina veloce',
+                    "La pagina principale arriva in {$seconds} secondi" . ($s['seconds'] > 2.5 ? ': oltre 2,5 secondi molti visitatori se ne vanno.' : '.')],
+                ['tracking', $measuring !== [], 'Misura visite e risultati',
+                    $measuring ? 'Strumenti attivi: ' . implode(', ', $measuring) . '.' : 'Nessuno strumento di misurazione: non si sa da dove arrivano i clienti.'],
+                ['pixel', in_array('Pixel di Meta', $s['tools'], true), 'Pixel di Meta',
+                    in_array('Pixel di Meta', $s['tools'], true) ? 'Le sponsorizzate su Facebook e Instagram possono misurare i risultati e ritrovare chi ha visitato il sito.' : 'Senza Pixel le sponsorizzate su Facebook e Instagram non sanno chi ha visitato il sito né chi ha comprato.'],
+                ['conversion', $ways !== [], 'Modo semplice per contattare o comprare',
+                    $ways ? 'Il visitatore può usare: ' . implode(', ', $ways) . '.' : 'Niente modulo, WhatsApp, prenotazione o acquisto online: chi è interessato deve cercare da solo come farsi avanti.'],
+                ['trust', $s['features']['reviews'], 'Recensioni e testimonianze',
+                    $s['features']['reviews'] ? 'Il sito mostra recensioni o testimonianze dei clienti.' : 'Nessuna recensione o testimonianza in vista: sono la prima cosa che convince un cliente nuovo.'],
+                ['structured', $s['structured_data'], 'Scheda dati per Google',
+                    $s['structured_data'] ? 'Il sito descrive l\'attività a Google con i dati strutturati.' : 'Mancano i dati strutturati: Google mostra l\'attività con meno informazioni (orari, valutazioni, indirizzo).'],
+            ];
+        }
         return array_map(fn($c) => ['key' => $c[0], 'ok' => $c[1], 'label' => $c[2], 'detail' => $c[3]], $checks);
     }
 
@@ -219,5 +248,122 @@ final class Competition
     {
         $d = abs($a - $b);
         return min($d, 360 - $d);
+    }
+}
+
+/** Diagnosi strategica del sito di un cliente: i dati rilevati, i controlli e l'analisi dell'AI "da amministratore delegato". */
+final class SiteAnalysis
+{
+    /** Aree della pagella, nell'ordine in cui si mostrano, con i controlli automatici che le riguardano. */
+    public const AREAS = [
+        'Chiarezza dell\'offerta' => ['content', 'title', 'description'],
+        'Fiducia e prove' => ['trust', 'https', 'contacts'],
+        'Conversione dei visitatori' => ['conversion', 'contacts', 'mobile', 'speed'],
+        'Visibilità su Google' => ['title', 'description', 'structured', 'blog', 'content'],
+        'Identità di marca' => ['brand'],
+        'Presenza social e contenuti' => ['socials', 'blog'],
+        'Misurazione e dati' => ['tracking', 'pixel'],
+    ];
+    public const IMPACT = ['alta', 'media', 'bassa'];
+    public const EFFORT = ['basso', 'medio', 'alto'];
+    public const WHEN = ['Questa settimana', 'Entro 30 giorni', 'Entro 90 giorni'];
+
+    /** Ciò che si conserva della lettura del sito: dati dell'attività, strumenti, social, controlli e punteggio. */
+    public static function profile(array $site): array
+    {
+        $checks = SiteChecks::run($site);
+        return [
+            'url' => $site['url'], 'facts' => $site['facts'] ?? null, 'signals' => $site['signals'] ?? null, 'socials' => $site['socials'],
+            'colors' => array_slice($site['colors'], 0, 4), 'fonts' => $site['fonts'] ?? [], 'checks' => $checks, 'score' => SiteChecks::score($checks),
+        ];
+    }
+
+    /** I dati rilevati dal sito in righe leggibili, per il prompt. */
+    public static function factsText(array $site): string
+    {
+        $f = $site['facts'] ?? [];
+        $c = $f['contacts'] ?? [];
+        $s = $site['signals'] ?? null;
+        $yes = fn(bool $v) => $v ? 'sì' : 'no';
+        $lines = array_filter([
+            ($f['name'] ?? '') !== '' ? "Nome nei dati strutturati: {$f['name']}" . (($f['legal_name'] ?? '') !== '' ? " ({$f['legal_name']})" : '') : '',
+            'Telefoni: ' . (implode(', ', $c['phones'] ?? []) ?: 'nessuno trovato'),
+            'Email: ' . (implode(', ', $c['emails'] ?? []) ?: 'nessuna trovata'),
+            'WhatsApp: ' . $yes(!empty($c['whatsapp'])),
+            ($c['address'] ?? '') !== '' ? "Indirizzo: {$c['address']}" : 'Indirizzo: non trovato',
+            ($c['vat'] ?? '') !== '' ? 'Partita IVA indicata' : 'Partita IVA non trovata',
+            ($f['opening_hours'] ?? '') !== '' ? "Orari: {$f['opening_hours']}" : '',
+            ($f['price_range'] ?? '') !== '' ? "Fascia di prezzo: {$f['price_range']}" : '',
+            !empty($f['rating']) ? "Valutazione dichiarata: {$f['rating']['value']} su {$f['rating']['count']} recensioni" : '',
+            ($f['founded'] ?? '') !== '' ? "Fondata: {$f['founded']}" : '',
+            'Social collegati: ' . (implode(', ', [...array_map(fn($k) => str_replace('_url', '', $k), array_keys($site['socials'])), ...array_keys($f['other_socials'] ?? [])]) ?: 'nessuno'),
+            'Colori: ' . (implode(', ', array_slice($site['colors'], 0, 4)) ?: 'non rilevati') . '; caratteri: ' . (implode(', ', $site['fonts'] ?? []) ?: 'non rilevati'),
+        ]);
+        if ($s) {
+            $features = array_keys(array_filter($s['features']));
+            $lines = [...$lines,
+                'Piattaforma: ' . ($s['platform'] ?? 'non riconosciuta'),
+                'Strumenti di misura e pubblicità: ' . (implode(', ', $s['tools']) ?: 'nessuno'),
+                'Gestione cookie: ' . ($s['consent'] ?? 'non riconosciuta') . '; chat: ' . ($s['chat'] ?? 'nessuna'),
+                'Funzioni presenti: ' . (implode(', ', $features) ?: 'nessuna'),
+                "Tecnico: adatto al telefono {$yes($s['mobile'])}, risposta in {$s['seconds']} s, pagina di {$s['page_kb']} KB, {$s['languages']} lingue, "
+                    . "{$s['h1']} titoli H1, {$s['images_without_alt']} immagini su {$s['images']} senza descrizione",
+            ];
+        }
+        return implode("\n", $lines);
+    }
+
+    /** L'analisi dell'AI ripulita: solo i campi attesi, testi accorciati, voti tra 1 e 10, valori ammessi. */
+    public static function clean(array $raw): array
+    {
+        $text = fn(mixed $v, int $max = 600): string => is_scalar($v) ? mb_substr(trim((string)$v), 0, $max) : '';
+        $list = fn(mixed $v, int $count, int $max = 300): array => is_array($v) ? array_slice(array_values(array_filter(array_map(fn($s) => $text($s, $max), $v))), 0, $count) : [];
+        $pick = fn(mixed $v, array $allowed): string => in_array($v, $allowed, true) ? $v : $allowed[1];
+
+        $scores = [];
+        foreach (is_array($raw['scorecard'] ?? null) ? $raw['scorecard'] : [] as $row) {
+            $area = is_array($row) ? ($row['area'] ?? null) : null;
+            if (!is_string($area) || !isset(self::AREAS[$area]) || isset($scores[$area])) continue;
+            $scores[$area] = ['area' => $area, 'score' => max(1, min(10, (int)($row['score'] ?? 1))), 'note' => $text($row['note'] ?? '', 300)];
+        }
+        $priorities = [];
+        foreach (is_array($raw['priorities'] ?? null) ? $raw['priorities'] : [] as $p) {
+            if (!is_array($p) || $text($p['title'] ?? '') === '') continue;
+            $priorities[] = [
+                'title' => $text($p['title'], 160), 'why' => $text($p['why'] ?? ''), 'how' => $text($p['how'] ?? '', 900),
+                'impact' => $pick($p['impact'] ?? null, self::IMPACT), 'effort' => $pick($p['effort'] ?? null, self::EFFORT),
+                'when' => $pick($p['when'] ?? null, self::WHEN), 'kpi' => $text($p['kpi'] ?? '', 200),
+            ];
+        }
+        $kpis = [];
+        foreach (is_array($raw['kpis'] ?? null) ? $raw['kpis'] : [] as $k) {
+            if (is_array($k) && $text($k['name'] ?? '') !== '') $kpis[] = ['name' => $text($k['name'], 120), 'target' => $text($k['target'] ?? '', 200)];
+        }
+        $swot = is_array($raw['swot'] ?? null) ? $raw['swot'] : [];
+        return [
+            'verdict' => $text($raw['verdict'] ?? '', 1200),
+            'business_model' => $text($raw['business_model'] ?? '', 800),
+            'value_proposition' => $text($raw['value_proposition'] ?? '', 600),
+            'sharper_proposition' => $text($raw['sharper_proposition'] ?? '', 300),
+            'target' => $text($raw['target'] ?? '', 600),
+            'scorecard' => array_values(array_filter(array_map(fn($area) => $scores[$area] ?? null, array_keys(self::AREAS)))),
+            'swot' => [
+                'strengths' => $list($swot['strengths'] ?? [], 5), 'weaknesses' => $list($swot['weaknesses'] ?? [], 5),
+                'opportunities' => $list($swot['opportunities'] ?? [], 5), 'threats' => $list($swot['threats'] ?? [], 5),
+            ],
+            'priorities' => array_slice($priorities, 0, 8),
+            'quick_wins' => $list($raw['quick_wins'] ?? [], 6),
+            'revenue_ideas' => $list($raw['revenue_ideas'] ?? [], 5, 400),
+            'kpis' => array_slice($kpis, 0, 6),
+            'questions' => $list($raw['questions'] ?? [], 6),
+        ];
+    }
+
+    /** Voto da 1 a 10 di un'area secondo i controlli automatici (null se nessun controllo la riguarda). */
+    public static function areaScore(string $area, array $checks): ?int
+    {
+        $related = array_filter($checks, fn($c) => in_array($c['key'], self::AREAS[$area] ?? [], true));
+        if (!$related) return null;
+        return (int)round(2 + 7 * count(array_filter($related, fn($c) => $c['ok'])) / count($related));
     }
 }

@@ -80,6 +80,7 @@ $handlers = [
         } else {
             $values['primary_color'] = $kit['primary_color'];
             $values['secondary_color'] = $kit['secondary_color'];
+            $values['font_family'] = Competition::font($site['fonts'][0] ?? null);
             $stmt = $pdo->prepare('INSERT INTO brand_profiles (organization_id, ' . implode(', ', array_keys($values)) . ') VALUES (?' . str_repeat(', ?', count($values)) . ')');
             $stmt->execute([$orgId, ...array_values($values)]);
             $brandId = (int)$pdo->lastInsertId();
@@ -90,10 +91,7 @@ $handlers = [
         }
 
         $logoId = $existing['logo_asset_id'] ?? null;
-        if (!$logoId && ($logo = SiteReader::downloadLogo($site['logo_candidates']))) {
-            $logoId = AssetController::saveBytes($orgId, $userId, $logo['bytes'], $logo['name'], $brandId);
-            $pdo->prepare('UPDATE brand_profiles SET logo_asset_id=? WHERE id=? AND organization_id=?')->execute([$logoId, $brandId, $orgId]);
-        }
+        if (!$logoId) $logoId = saveSiteLogo($orgId, $userId, $brandId, $site);
 
         // Foto dei contenuti del sito, saltando quelle già importate per questo cliente.
         $stmt = $pdo->prepare('SELECT original_name FROM assets WHERE organization_id=? AND brand_profile_id=?');
@@ -104,7 +102,26 @@ $handlers = [
             if (isset($known[$image['name']])) continue;
             if (AssetController::saveBytes($orgId, $userId, $image['bytes'], $image['name'], $brandId)) $photos++;
         }
+
+        // Dati e controlli del sito restano nella scheda; per un cliente nuovo parte subito anche la diagnosi strategica.
+        $analysisJob = $existing ? null : Jobs::enqueue(['organization_id' => $orgId, 'id' => $userId], 'site_analysis', ['brand_id' => $brandId]);
+        saveSiteAnalysis($orgId, $brandId, SiteAnalysis::profile($site), null, $analysisJob['id'] ?? null);
         return ['brand_id' => $brandId, 'site_colors' => $site['colors'], 'logo_found' => $logoId !== null, 'photos_imported' => $photos];
+    },
+
+    /** Diagnosi strategica "da amministratore delegato": rilegge il sito del cliente e chiede all'AI giudizio, priorità e piano. */
+    'site_analysis' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $brandId = (int)$job['payload']['brand_id'];
+        $brand = loadBrand($orgId, $brandId) ?: throw new GenerationException('Il cliente non esiste più.');
+        if (empty($brand['website_url'])) throw new GenerationException('Aggiungi l\'indirizzo del sito nel brand kit.');
+        $site = readSite($brand['website_url']);
+        $profile = SiteAnalysis::profile($site);
+        $analysis = SiteAnalysis::clean(MarketingAis::make()->siteAnalysis($brand, $site, $profile['checks']));
+        // Se il cliente è ancora senza logo, è l'occasione per prenderlo dal sito.
+        if (empty($brand['logo_asset_id'])) saveSiteLogo($orgId, (int)$job['created_by'], $brandId, $site);
+        saveSiteAnalysis($orgId, $brandId, $profile, $analysis, null);
+        return ['brand_id' => $brandId, 'score' => $profile['score']];
     },
 
     /** Video del post: storyboard dal testo, foto del cliente, montaggio con FFmpeg. Nessun servizio a pagamento. */
@@ -385,6 +402,29 @@ $handlers = [
         return ['brand_id' => $brandId];
     },
 ];
+
+/** Scarica il logo dal sito e lo collega al cliente; restituisce l'id del file o null se non c'è un logo valido. */
+function saveSiteLogo(int $orgId, int $userId, int $brandId, array $site): ?int
+{
+    $logo = SiteReader::downloadLogo($site['logos'] ?? $site['logo_candidates']);
+    $logoId = $logo ? AssetController::saveBytes($orgId, $userId, $logo['bytes'], $logo['name'], $brandId) : null;
+    if ($logoId) Database::connection()->prepare('UPDATE brand_profiles SET logo_asset_id=? WHERE id=? AND organization_id=?')->execute([$logoId, $brandId, $orgId]);
+    return $logoId;
+}
+
+/** Salva la lettura del sito del cliente e, se c'è, la diagnosi; il job_id indica un'analisi in corso. */
+function saveSiteAnalysis(int $orgId, int $brandId, array $profile, ?array $analysis, ?int $jobId): void
+{
+    $now = date('Y-m-d H:i:s');
+    $pdo = Database::connection();
+    $pdo->prepare('INSERT INTO site_analyses (organization_id, brand_profile_id, profile, profile_at, job_id) VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE profile=VALUES(profile), profile_at=VALUES(profile_at), job_id=COALESCE(VALUES(job_id), job_id)')
+        ->execute([$orgId, $brandId, json_encode($profile, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $now, $jobId]);
+    if ($analysis !== null) {
+        $pdo->prepare('UPDATE site_analyses SET analysis=?, analyzed_at=? WHERE organization_id=? AND brand_profile_id=?')
+            ->execute([json_encode($analysis, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), $now, $orgId, $brandId]);
+    }
+}
 
 /** Controlli oggettivi, punteggio, colori e caratteri di un sito: la base del confronto tra cliente e concorrenti. */
 function siteSnapshot(array $site): array

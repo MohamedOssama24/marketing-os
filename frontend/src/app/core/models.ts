@@ -753,3 +753,76 @@ export interface CompetitionStudy {
   analyzing: boolean;
   job_error: string | null;
 }
+
+export interface SiteCheck {
+  key: string;
+  ok: boolean;
+  label: string;
+  detail: string;
+}
+
+/** Ciò che è stato letto dal sito del cliente: dati dell'attività, strumenti di marketing e controlli. */
+export interface SiteProfile {
+  url: string;
+  facts: {
+    name: string;
+    legal_name: string;
+    opening_hours: string;
+    price_range: string;
+    rating: { value: number; count: number } | null;
+    founded: string;
+    contacts: { phones: string[]; emails: string[]; whatsapp: string | null; address: string; vat: string };
+    other_socials: Partial<Record<'tiktok' | 'youtube' | 'x' | 'pinterest', string>>;
+  } | null;
+  signals: {
+    platform: string | null;
+    tools: string[];
+    consent: string | null;
+    chat: string | null;
+    features: Record<'ecommerce' | 'booking' | 'contact_form' | 'newsletter' | 'whatsapp' | 'reviews' | 'video', boolean>;
+    mobile: boolean;
+    seconds: number;
+    page_kb: number;
+    languages: number;
+    h1: number;
+    images: number;
+    images_without_alt: number;
+    structured_data: boolean;
+    schema_types: string[];
+    open_graph: boolean;
+  } | null;
+  socials: Partial<Record<'instagram_url' | 'facebook_url' | 'linkedin_url', string>>;
+  colors: string[];
+  fonts: string[];
+  checks: SiteCheck[];
+  score: number;
+}
+
+export type Impact = 'alta' | 'media' | 'bassa';
+export type Effort = 'basso' | 'medio' | 'alto';
+
+/** Diagnosi strategica dell'AI, ragionata come un amministratore delegato. */
+export interface SiteDiagnosis {
+  verdict: string;
+  business_model: string;
+  value_proposition: string;
+  sharper_proposition: string;
+  target: string;
+  scorecard: { area: string; score: number; note: string }[];
+  swot: { strengths: string[]; weaknesses: string[]; opportunities: string[]; threats: string[] };
+  priorities: { title: string; why: string; how: string; impact: Impact; effort: Effort; when: string; kpi: string }[];
+  quick_wins: string[];
+  revenue_ideas: string[];
+  kpis: { name: string; target: string }[];
+  questions: string[];
+}
+
+export interface SiteAnalysisState {
+  profile: SiteProfile | null;
+  analysis: SiteDiagnosis | null;
+  profile_at: string | null;
+  analyzed_at: string | null;
+  job_id: number | null;
+  analyzing: boolean;
+  job_error: string | null;
+}
