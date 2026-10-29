@@ -188,6 +188,23 @@ final class FakeMarketingAi implements MarketingAi
         ];
     }
 
+    public function competitorAds(array $brand, string $competitor, array $ads, array $audience): array
+    {
+        $longest = $ads ? array_reduce($ads, fn($a, $b) => $a === null || $b['days'] > $a['days'] ? $b : $a) : null;
+        $client = $brand['name'] ?? 'il cliente';
+        return [
+            'summary' => "{$competitor} ha " . count($ads) . ' inserzioni recenti' . ($longest ? "; quella attiva da più tempo ({$longest['days']} giorni) dice: «" . mb_substr($longest['title'] ?: $longest['text'], 0, 80) . '».' : '.')
+                . ' [Riepilogo di esempio: imposta ANTHROPIC_API_KEY per quello completo]',
+            'offer' => 'Da valutare leggendo le inserzioni qui sotto.',
+            'audience' => 'Soprattutto ' . ($audience['top_age'] ? "persone tra {$audience['top_age']} anni" : 'un pubblico ampio') . ($audience['places'] ? ' a ' . implode(', ', array_slice($audience['places'], 0, 3)) : '') . '.',
+            'tone' => 'Da valutare: attiva l\'AI per un\'analisi del tono.',
+            'counter_ad' => [
+                'primary_text' => mb_substr("Scegli {$client}: [offerta] e un servizio che ti segue davvero, dalla prima richiesta al risultato.", 0, 125),
+                'headline' => mb_substr("Scopri {$client}", 0, 40),
+            ],
+        ];
+    }
+
     public function styleProposal(array $brand, array $market): array
     {
         $takenColors = array_merge([], ...array_column($market['competitors'], 'colors'));

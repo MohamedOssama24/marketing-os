@@ -19,8 +19,10 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Ore e redditività**: timer e ore per cliente, costo orario dell'agenzia, margine e guadagno orario reale di ogni cliente.
 - **Recensioni**: l'AI propone tre risposte nel tono del cliente a recensioni di Google, Facebook, TripAdvisor.
 - **Concorrenti**: fino a 5 per cliente, rianalizzati ogni settimana, con spunti per distinguersi e il link alle loro inserzioni attive. Per ognuno, cosa fa bene e come fare meglio, con un clic per far scrivere all'AI il post del cliente.
+- **Inserzioni dei concorrenti**: dall'archivio inserzioni di Meta, cosa sponsorizzano, a chi (età, sesso, paesi), in quali città e zone, da quanto tempo (quelle attive da più di 30 giorni probabilmente funzionano), offerte e pagine di destinazione. La spesa è una stima (Meta non la pubblica), messa accanto alla spesa reale del cliente. Avviso quando un concorrente lancia nuove inserzioni, con il riepilogo dell'AI e una sponsorizzata del cliente pronta per la procedura guidata. Richiede `META_AD_LIBRARY_TOKEN`; con `META_AD_LIBRARY_SAMPLE=true` mostra dati di esempio.
 - **Confronto e proposta di stile**: il sito del cliente accanto a quelli dei concorrenti (punteggio, colori, caratteri, controlli), dove vince e dove perde, e uno stile che lo distingue (colori, carattere, foto, tono, formati) con l'anteprima prima/dopo; si applica al brand kit con un clic e si può annullare.
 - **Ricorrenze e avvisi**: festività e date commerciali nel calendario; avvisi su approvazioni ferme, budget superati, settimane senza post, report non aperti, fatture scadute.
+- **Italiano e inglese**: pulsante IT/EN nel menu (e `?lang=en` nei link, per esempio il portale per un cliente straniero). Per ogni cliente si sceglie anche la lingua in cui l'AI scrive post e sponsorizzate.
 - Ricerca rapida con Ctrl+K, tema scuro, app installabile sul telefono.
 - Team con ruoli, libreria file, isolamento tra organizzazioni.
 
@@ -88,6 +90,8 @@ cd frontend
 npm install
 npx ng serve
 ```
+
+Traduzioni: i componenti sono scritti in italiano e `src/app/i18n/en.json` contiene le frasi in inglese. Dopo aver aggiunto o cambiato testi esegui `node scripts/i18n-extract.mjs`: le frasi nuove compaiono con valore vuoto da tradurre (`--check` fallisce se ne mancano).
 
 Apri http://localhost:4200: progetti, brand kit, libreria file, team e generazione dei contenuti. L'indirizzo delle API è in `frontend/src/app/core/models.ts` (`API_URL`); l'origine `http://localhost:4200` deve coincidere con `CORS_ORIGIN` nel file `.env`.
 

@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 final class BrandController
 {
-    public const COLUMNS = 'id, name, summary, website_url, instagram_url, facebook_url, linkedin_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, created_at, updated_at';
+    public const COLUMNS = 'id, name, summary, website_url, instagram_url, facebook_url, linkedin_url, industry, audience, tone_of_voice, brand_guidelines, primary_color, secondary_color, font_family, logo_asset_id, products, keywords, words_to_avoid, content_language, created_at, updated_at';
+
+    /** Lingue in cui l'AI può scrivere i contenuti del cliente. */
+    public const CONTENT_LANGUAGES = ['it', 'en'];
 
     /** Campi testuali facoltativi del brand kit con la lunghezza massima. */
     private const TEXT_FIELDS = [
@@ -107,6 +110,11 @@ final class BrandController
             $color = Http::optionalString($data, $key, 7);
             if ($color !== null && !preg_match('/^#[0-9a-fA-F]{6}$/', $color)) Http::validationError("Campo '{$key}' deve essere un colore esadecimale, es. #5B4BDB.");
             $fields[$key] = $color === null ? null : strtoupper($color);
+        }
+        if ($creating || array_key_exists('content_language', $data)) {
+            $language = $data['content_language'] ?? 'it';
+            if (!in_array($language, self::CONTENT_LANGUAGES, true)) Http::validationError('Lingua dei contenuti non valida: usa it o en.');
+            $fields['content_language'] = $language;
         }
         if ($creating || array_key_exists('logo_asset_id', $data)) {
             $logoId = Http::optionalInt($data, 'logo_asset_id');

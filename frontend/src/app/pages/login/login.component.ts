@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { LangSwitchComponent } from '../../layout/lang-switch.component';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
@@ -7,9 +8,10 @@ import { apiErrorMessage } from '../../core/models';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [LangSwitchComponent, ReactiveFormsModule, RouterLink],
   template: `
     <main class="auth-page">
+      <div class="auth-lang"><app-lang-switch /></div>
       <form class="card auth-card" [formGroup]="form" (ngSubmit)="submit()">
         <div class="brand">Marketing <span>OS</span></div>
         <h1>Accedi</h1>

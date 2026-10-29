@@ -7,7 +7,7 @@ import { ApiService } from '../../core/api.service';
 import { AdWizardComponent } from './ad-wizard.component';
 import { AuthService } from '../../core/auth.service';
 import {
-  AdImportResult, AdPlan, AdPlatform, AdSpend, AdSpendInput, AdSummary, Brand, INVOICE_STATUS_LABELS, PLATFORM_LABELS, Project, apiErrorMessage,
+  AdDraft, AdImportResult, AdPlan, AdPlatform, AdSpend, AdSpendInput, AdSummary, Brand, INVOICE_STATUS_LABELS, PLATFORM_LABELS, Project, apiErrorMessage,
 } from '../../core/models';
 
 const MONTH_INITIALS = ['G', 'F', 'M', 'A', 'M', 'G', 'L', 'A', 'S', 'O', 'N', 'D'];
@@ -78,7 +78,7 @@ type Draft = Omit<AdSpendInput, 'spent'> & { id: number | null; spent: number | 
     }
 
     @if (wizard(); as w) {
-      <app-ad-wizard [brands]="brands()" [plan]="w.plan" [contentId]="w.contentId" [brandId]="brandId" (closed)="closeWizard()" (changedPlan)="planChanged($event)" />
+      <app-ad-wizard [brands]="brands()" [plan]="w.plan" [contentId]="w.contentId" [brandId]="w.draft?.brand_id ?? brandId" [draft]="w.draft ?? null" (closed)="closeWizard()" (changedPlan)="planChanged($event)" />
     }
 
     @if (summary(); as s) {
@@ -307,7 +307,7 @@ export class AdsComponent implements OnInit {
   projects = signal<Project[]>([]);
   plans = signal<AdPlan[]>([]);
   unreadRules = signal(0);
-  wizard = signal<{ plan: AdPlan | null; contentId: number | null } | null>(null);
+  wizard = signal<{ plan: AdPlan | null; contentId: number | null; draft?: AdDraft } | null>(null);
   rows = signal<AdSpend[]>([]);
   summary = signal<AdSummary | null>(null);
   year = signal(new Date().getFullYear());
@@ -337,6 +337,8 @@ export class AdsComponent implements OnInit {
         // Arrivando da un post con «Sponsorizza», la procedura parte già con cliente, testo e grafica del post.
         const sponsor = Number(this.route.snapshot.queryParamMap.get('sponsor'));
         if (sponsor) this.wizard.set({ plan: null, contentId: sponsor });
+        const draft = history.state?.adDraft as AdDraft | undefined;
+        if (draft?.brand_id) this.wizard.set({ plan: null, contentId: null, draft });
       },
       error: (err) => this.error.set(apiErrorMessage(err)),
     });

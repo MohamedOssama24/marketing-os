@@ -179,6 +179,9 @@ $router->add('GET', '/api/v1/brands/{brandId}/competitors', [CompetitorControlle
 $router->add('POST', '/api/v1/brands/{brandId}/competitors', [CompetitorController::class, 'store']);
 $router->add('POST', '/api/v1/competitors/{id}/refresh', [CompetitorController::class, 'refresh']);
 $router->add('DELETE', '/api/v1/competitors/{id}', [CompetitorController::class, 'destroy']);
+$router->add('GET', '/api/v1/brands/{brandId}/competitor-ads', [CompetitorAdsController::class, 'index']);
+$router->add('POST', '/api/v1/competitors/{id}/ads', [CompetitorAdsController::class, 'sync']);
+$router->add('PATCH', '/api/v1/competitor-ads/settings', [CompetitorAdsController::class, 'updateSettings']);
 $router->add('GET', '/api/v1/brands/{brandId}/competition', [CompetitionController::class, 'show']);
 $router->add('POST', '/api/v1/brands/{brandId}/competition', [CompetitionController::class, 'start']);
 $router->add('POST', '/api/v1/brands/{brandId}/competition/apply', [CompetitionController::class, 'apply']);

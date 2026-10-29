@@ -22,6 +22,13 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
       <label>LinkedIn<input formControlName="linkedin_url" placeholder="https://www.linkedin.com/company/nome" /></label>
       <label>Settore<input formControlName="industry" placeholder="Alimentare, e-commerce" /></label>
       <label>Font<input formControlName="font_family" placeholder="Montserrat" /><small class="muted">Nome di un font di Google Fonts.</small></label>
+      <label>Lingua dei contenuti
+        <select formControlName="content_language">
+          <option value="it">Italiano</option>
+          <option value="en">Inglese</option>
+        </select>
+        <small class="muted">L'AI scrive post e sponsorizzate in questa lingua.</small>
+      </label>
 
       <label>Colore principale
         <div class="color-field">
@@ -76,6 +83,7 @@ export class BrandFormComponent implements OnInit {
     linkedin_url: [''],
     industry: [''],
     font_family: [''],
+    content_language: ['it' as 'it' | 'en'],
     primary_color: ['', Validators.pattern(HEX)],
     secondary_color: ['', Validators.pattern(HEX)],
     logo_asset_id: [null as number | null],

@@ -352,6 +352,51 @@ $handlers = [
         return ['competitor_id' => (int)$competitor['id']];
     },
 
+    /** Legge le inserzioni del concorrente dall'archivio di Meta e, se ce ne sono di nuove, chiede all'AI cosa sta spingendo. */
+    'competitor_ads' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $competitor = Tenant::find('competitors', (int)$job['payload']['competitor_id'], $orgId, 'id, organization_id, brand_profile_id, name, meta_page_id, ads_checked_at')
+            ?? throw new GenerationException('Il concorrente non esiste più.');
+        $pdo = Database::connection();
+        $now = date('Y-m-d H:i:s');
+        try {
+            $new = MetaAdLibrary::sync($competitor);
+        } catch (GenerationException $e) {
+            $pdo->prepare('UPDATE competitors SET ads_checked_at=?, ads_error=? WHERE id=?')->execute([$now, mb_substr($e->getMessage(), 0, 300), $competitor['id']]);
+            throw $e;
+        }
+        $pdo->prepare('UPDATE competitors SET ads_checked_at=?, ads_error=NULL WHERE id=?')->execute([$now, $competitor['id']]);
+        if (!$new) return ['new_ads' => 0];
+
+        // Alla prima lettura niente avviso: le inserzioni non sono "nuove", le vediamo solo per la prima volta.
+        if ($competitor['ads_checked_at'] !== null) {
+            $pdo->prepare('UPDATE competitors SET ads_new_count=?, ads_new_at=? WHERE id=?')->execute([count($new), $now, $competitor['id']]);
+        }
+        $ads = CompetitorAdsController::ads((int)$competitor['id'], $orgId);
+        $insights = MetaAdLibrary::insights($ads, CompetitorAdsController::cpm($orgId));
+        $today = date('Y-m-d');
+        $forAi = array_map(fn($ad) => [
+            'text' => $ad['bodies'][0] ?? '', 'title' => $ad['titles'][0] ?? '', 'started_on' => $ad['started_on'],
+            'active' => $ad['stopped_on'] === null || $ad['stopped_on'] >= $today,
+            'days' => (int)((strtotime(min($ad['stopped_on'] ?? $today, $today)) - strtotime($ad['started_on'])) / 86400) + 1,
+            'places' => array_values(array_map(fn($l) => $l['name'], array_filter($ad['target_locations'] ?? [], fn($l) => !$l['excluded']))),
+        ], $ads);
+        try {
+            $s = MarketingAis::make()->competitorAds(loadBrand($orgId, (int)$competitor['brand_profile_id']), $competitor['name'], $forAi,
+                ['top_age' => $insights['top_age'], 'women_percent' => $insights['women_percent'], 'places' => array_column(array_slice($insights['places'], 0, 5), 'name')]);
+            $text = fn($v, int $len) => mb_substr(trim(is_scalar($v) ? (string)$v : ''), 0, $len);
+            $summary = [
+                'summary' => $text($s['summary'] ?? '', 800), 'offer' => $text($s['offer'] ?? '', 300), 'audience' => $text($s['audience'] ?? '', 300), 'tone' => $text($s['tone'] ?? '', 300),
+                'counter_ad' => ['primary_text' => $text($s['counter_ad']['primary_text'] ?? '', 500), 'headline' => $text($s['counter_ad']['headline'] ?? '', 80)],
+                'created_at' => $now,
+            ];
+            $pdo->prepare('UPDATE competitors SET ads_summary=? WHERE id=?')->execute([json_encode($summary, JSON_UNESCAPED_UNICODE), $competitor['id']]);
+        } catch (GenerationException $e) {
+            error_log('Competitor ads summary: ' . $e->getMessage());
+        }
+        return ['new_ads' => count($new)];
+    },
+
     /** Revisione di una sponsorizzata come la farebbe Meta, con la pagina di destinazione letta dal link. */
     'ad_review' => function (array $job): array {
         $orgId = (int)$job['organization_id'];
@@ -492,6 +537,19 @@ function refreshCompetitors(): void
     }
 }
 
+/** Ogni giorno rilegge le inserzioni dei concorrenti, se l'archivio di Meta è collegato. */
+function refreshCompetitorAds(): void
+{
+    if (MetaAdLibrary::source() === null) return;
+    $pdo = Database::connection();
+    $stale = $pdo->prepare("SELECT c.id, c.organization_id, c.created_by FROM competitors c LEFT JOIN jobs j ON j.id=c.ads_job_id
+        WHERE (c.ads_checked_at IS NULL OR c.ads_checked_at < ?) AND c.created_by IS NOT NULL AND (j.id IS NULL OR j.status IN ('done','failed')) LIMIT 20");
+    $stale->execute([date('Y-m-d H:i:s', strtotime('-24 hours'))]);
+    foreach ($stale->fetchAll() as $c) {
+        CompetitorAdsController::enqueue((int)$c['id'], ['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']]);
+    }
+}
+
 /** Unisce testo, invito all'azione, hashtag e note per il revisore in un unico corpo modificabile. */
 function formatBody(array $variant): string
 {
@@ -509,6 +567,7 @@ while (true) {
     if (time() >= $nextRefresh) {
         try {
             refreshCompetitors();
+            refreshCompetitorAds();
         } catch (Throwable $e) {
             error_log((string)$e);
         }

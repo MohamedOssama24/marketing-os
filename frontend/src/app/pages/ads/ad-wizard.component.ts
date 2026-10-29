@@ -1,11 +1,12 @@
 import { Component, EventEmitter, Input, OnDestroy, OnInit, Output, computed, inject, signal } from '@angular/core';
+import { LOCALE } from '../../i18n/i18n';
 import { CurrencyPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, Subscription, debounceTime, map, switchMap, timer, takeWhile } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import {
-  AdCheck, AdIssue, AdObjective, AdPlan, AdPlanInput, AdVerdict, Brand, ContentItem, MetaRulebook, RuleSeverity, apiErrorMessage,
+  AdCheck, AdDraft, AdIssue, AdObjective, AdPlan, AdPlanInput, AdVerdict, Brand, ContentItem, MetaRulebook, RuleSeverity, apiErrorMessage,
 } from '../../core/models';
 import { PostVisualComponent } from '../../shared/post-visual.component';
 import { publishableText } from '../../shared/publishing';
@@ -303,6 +304,8 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   @Input() plan: AdPlan | null = null;
   @Input() contentId: number | null = null;
   @Input() brandId: number | null = null;
+  /** Testi di partenza, per esempio la sponsorizzata proposta per battere un concorrente. */
+  @Input() draft: AdDraft | null = null;
   @Output() closed = new EventEmitter<void>();
   @Output() changedPlan = new EventEmitter<AdPlan>();
 
@@ -377,8 +380,8 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     const r = this.rules();
     if (!p || !r) return [];
     const a = p.audience;
-    const money = (n: number) => n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-    const date = (d: string) => new Date(d).toLocaleDateString('it-IT');
+    const money = (n: number) => n.toLocaleString(LOCALE, { style: 'currency', currency: 'EUR' });
+    const date = (d: string) => new Date(d).toLocaleDateString(LOCALE);
     return [
       { title: '1. Campagna', rows: [
         { label: 'Obiettivo', value: r.objectives.find((o) => o.key === p.objective)?.label ?? p.objective },
@@ -416,6 +419,11 @@ export class AdWizardComponent implements OnInit, OnDestroy {
       this.ad.brand_id = this.brandId ?? this.brands[0]?.id ?? 0;
       if (this.contentId) this.prefill(this.contentId);
       else this.ad.url = this.brand()?.website_url ?? '';
+      if (this.draft) {
+        this.ad.primary_text = this.draft.primary_text;
+        this.ad.headline = this.draft.headline.slice(0, 40);
+        this.changed();
+      }
     }
   }
 

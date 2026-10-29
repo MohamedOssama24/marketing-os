@@ -159,6 +159,8 @@ export interface Brand {
   products: string | null;
   keywords: string | null;
   words_to_avoid: string | null;
+  /** Lingua in cui l'AI scrive post e sponsorizzate del cliente. */
+  content_language: 'it' | 'en';
   created_at: string;
   updated_at: string;
 }
@@ -957,4 +959,68 @@ export interface AdPlan extends Omit<AdPlanInput, 'brand_id' | 'content_id' | 'u
   ads_manager_url: string;
   created_at: string;
   updated_at: string;
+}
+
+/** Inserzioni dei concorrenti dall'archivio di Meta: la spesa è una stima, Meta non la pubblica. */
+export interface CompetitorAdsView {
+  source: 'meta' | 'sample' | null;
+  cpm: number;
+  default_cpm: number;
+  frequency: [number, number];
+  window_days: number;
+  client_spend_30d: number;
+  competitors: CompetitorAds[];
+}
+
+export interface SpendRange {
+  low: number;
+  high: number;
+}
+
+export interface CompetitorAds {
+  id: number;
+  name: string;
+  meta_page_id: string | null;
+  checked_at: string | null;
+  error: string | null;
+  syncing: boolean;
+  job_id: number | null;
+  summary: { summary: string; offer: string; audience: string; tone: string; counter_ad: { primary_text: string; headline: string }; created_at: string } | null;
+  new_ads: number;
+  new_at: string | null;
+  library_url: string;
+  insights: {
+    ads: number; active: number; new_30d: number; reach: number; spend: SpendRange | null; spend_30d: SpendRange | null;
+    ages: { age: string; percent: number }[]; top_age: string | null; women_percent: number | null;
+    countries: { country: string; percent: number }[]; places: { name: string; ads: number }[]; excluded_places: string[];
+    platforms: { platform: string; ads: number }[]; domains: { domain: string; ads: number }[];
+    cadence: { month: string; ads: number }[]; winners: { archive_id: string; days: number }[]; offers: string[];
+  };
+  ads: CompetitorAd[];
+}
+
+export interface CompetitorAd {
+  archive_id: string;
+  title: string;
+  text: string;
+  caption: string;
+  platforms: string[];
+  started_on: string;
+  stopped_on: string | null;
+  active: boolean;
+  days: number;
+  reach: number | null;
+  spend: SpendRange | null;
+  places: string[];
+  ages: string[] | null;
+  gender: string | null;
+  winner: boolean;
+  url: string;
+}
+
+/** Testi di partenza per una nuova sponsorizzata (per esempio quella proposta contro un concorrente). */
+export interface AdDraft {
+  brand_id: number;
+  primary_text: string;
+  headline: string;
 }

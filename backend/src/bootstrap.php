@@ -24,4 +24,5 @@ require_once __DIR__ . '/Video/VideoRenderer.php';
 require_once __DIR__ . '/Ads/AdsCsvParser.php';
 require_once __DIR__ . '/Ads/MetaRules.php';
 require_once __DIR__ . '/Ads/MetaPolicyMonitor.php';
+require_once __DIR__ . '/Ads/MetaAdLibrary.php';
 foreach (glob(__DIR__ . '/Controllers/*.php') ?: [] as $controller) require_once $controller;

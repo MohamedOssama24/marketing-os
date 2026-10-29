@@ -1,4 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { LOCALE } from '../../i18n/i18n';
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
@@ -246,7 +247,7 @@ export class BillingComponent implements OnInit {
 
   periodLabel(): string {
     const [y, m] = this.period().split('-').map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+    return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
   }
 
   shiftMonth(delta: number): void {

@@ -35,6 +35,7 @@ final class CompetitorController
             ->execute([$user['organization_id'], $brandId, $user['id'], $name, $url]);
         $id = (int)$pdo->lastInsertId();
         self::analyze($id, $user);
+        if (MetaAdLibrary::source() !== null) CompetitorAdsController::enqueue($id, $user);
         Audit::log($user, 'competitor.created', 'competitor', $id);
         Http::json(['data' => self::find($id, $user['organization_id'])], 202);
     }

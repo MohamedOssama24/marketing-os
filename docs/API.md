@@ -84,7 +84,7 @@ Un'operazione non consentita risponde `403`. Una risorsa di un'altra organizzazi
 
 `GET /brands`, `GET /brands/{id}`, `POST /brands` (editor+), `PATCH /brands/{id}` (editor+), `DELETE /brands/{id}` (owner, admin).
 
-Campi: `name` (obbligatorio), `website_url`, `industry`, `audience`, `tone_of_voice`, `brand_guidelines`, `primary_color` e `secondary_color` (formato `#RRGGBB`), `font_family`, `logo_asset_id` (un'immagine della libreria dell'organizzazione), `products`, `keywords`, `words_to_avoid`.
+Campi: `name` (obbligatorio), `website_url`, `industry`, `audience`, `tone_of_voice`, `brand_guidelines`, `primary_color` e `secondary_color` (formato `#RRGGBB`), `font_family`, `logo_asset_id` (un'immagine della libreria dell'organizzazione), `products`, `keywords`, `words_to_avoid`, `content_language` (`it` o `en`, default `it`: la lingua in cui l'AI scrive post e sponsorizzate del cliente).
 
 ## Libreria file
 
@@ -319,6 +319,16 @@ Fino a 5 per cliente. Il worker legge il sito (protezione SSRF) e l'AI riassume 
 - `GET /brands/{id}/competitors` — con `analysis`, `last_checked_at` e `ad_library_url` (Libreria inserzioni di Meta, che in UE mostra tutte le inserzioni attive). `analysis` contiene anche `strengths` (`[{ strength, counter, post_idea }]`: cosa fa bene, come fare meglio e il brief per un post), `checks` e `score` (gli stessi controlli dell'audit), `colors` e `fonts` del sito.
 - `POST /brands/{id}/competitors` — owner, admin, editor. `{ "url", "name"? }`, risponde `202`.
 - `POST /competitors/{id}/refresh`, `DELETE /competitors/{id}`.
+
+### Inserzioni dei concorrenti
+
+Dall'archivio inserzioni di Meta (Ad Library API, inserzioni mostrate in Italia negli ultimi 90 giorni). Serve `META_AD_LIBRARY_TOKEN` (app su developers.facebook.com con identità verificata su facebook.com/ID); con `META_AD_LIBRARY_SAMPLE=true` e senza token si usano dati di esempio. Il worker le rilegge ogni 24 ore e quando si aggiunge un concorrente; se ne trova di nuove l'AI ne riassume leva, pubblico e tono e propone una sponsorizzata del cliente, e compare un avviso per 7 giorni.
+
+Meta non pubblica la spesa delle inserzioni commerciali: la stima è persone raggiunte in UE × 1,3–2,2 visualizzazioni a testa × costo per 1.000 visualizzazioni (default 6 €, modificabile).
+
+- `GET /brands/{id}/competitor-ads` — `source` (`meta`, `sample` o `null` se non collegato), `cpm`, `client_spend_30d` (spesa reale del cliente dalle sponsorizzate registrate) e per ogni concorrente `insights` (`active`, `new_30d`, `reach`, `spend` e `spend_30d` come `{ low, high }`, `ages`, `women_percent`, `countries`, `places` ed `excluded_places`, `platforms`, `domains`, `cadence`, `winners` = attive da almeno 30 giorni, `offers`), `summary` dell'AI e le ultime 12 `ads` con link pubblico all'archivio.
+- `POST /competitors/{id}/ads` — owner, admin, editor. Rilegge le inserzioni (`202` con `job_id`); `{ "meta_page" }` imposta la pagina Facebook dal link dell'archivio (`view_all_page_id=…`) o dal suo numero. `422` se l'archivio non è collegato.
+- `PATCH /competitor-ads/settings` — owner, admin, editor. `{ "cpm": 0.5–100 | null }`.
 
 ### Confronto e proposta di stile
 

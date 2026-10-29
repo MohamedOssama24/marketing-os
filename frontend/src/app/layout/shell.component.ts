@@ -5,12 +5,13 @@ import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { Alert, ROLE_LABELS } from '../core/models';
 import { CommandPaletteComponent } from './command-palette.component';
+import { LangSwitchComponent } from './lang-switch.component';
 import { currentTheme, toggleTheme } from './theme';
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommandPaletteComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, CommandPaletteComponent, LangSwitchComponent],
   template: `
     <div class="shell">
       <aside class="sidebar">
@@ -56,6 +57,7 @@ import { currentTheme, toggleTheme } from './theme';
               <small class="muted">{{ roleLabels[user.role] }}</small>
             </div>
           }
+          <app-lang-switch />
           <button class="icon-btn" (click)="switchTheme()" [attr.aria-label]="theme() === 'dark' ? 'Tema chiaro' : 'Tema scuro'" [title]="theme() === 'dark' ? 'Tema chiaro' : 'Tema scuro'">
             <i class="ti" [class]="theme() === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
           </button>

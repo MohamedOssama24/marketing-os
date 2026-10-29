@@ -664,6 +664,63 @@ check('Link alla libreria inserzioni di Meta', str_contains($competitor[1]['data
 expectStatus('B non vede i concorrenti di A', req('GET', "/brands/{$brandA['id']}/competitors", $b['token']), 404);
 expectStatus('B non elimina il concorrente di A', req('DELETE', "/competitors/{$competitor[1]['data']['id']}", $b['token']), 404);
 
+echo "\nInserzioni dei concorrenti\n";
+check('Pagina dal link dell\'archivio Meta', MetaAdLibrary::pageIdFrom('https://www.facebook.com/ads/library/?active_status=all&view_all_page_id=123456789&country=IT') === '123456789');
+check('Pagina da un numero', MetaAdLibrary::pageIdFrom(' 987654321 ') === '987654321');
+check('Un link qualsiasi non è una pagina', MetaAdLibrary::pageIdFrom('https://evil.example/?view_all_page_id=123456789') === null && MetaAdLibrary::pageIdFrom('ciao') === null);
+$parsed = MetaAdLibrary::parse([
+    'id' => '111222333', 'page_id' => '555666777', 'page_name' => 'Rivale', 'ad_creative_bodies' => ['Sconto del 20% fino a domenica. Vieni a trovarci.'],
+    'ad_creative_link_titles' => ['Prova gratis'], 'ad_creative_link_captions' => ['www.rivale.it/offerte'], 'publisher_platforms' => ['facebook', 'instagram'],
+    'ad_delivery_start_time' => '2026-08-01', 'eu_total_reach' => 10000,
+    'ad_snapshot_url' => 'https://www.facebook.com/ads/archive/render_ad/?id=111222333&access_token=SEGRETO',
+    'age_country_gender_reach_breakdown' => [['country' => 'IT', 'age_gender_breakdowns' => [['age_range' => '25-34', 'female' => 6000, 'male' => 2000], ['age_range' => '35-44', 'female' => 1000, 'male' => 1000], ['age_range' => 'Unknown', 'female' => 5]]]],
+    'target_locations' => [['name' => 'Pescara', 'type' => 'city', 'excluded' => false], ['name' => 'Chieti', 'excluded' => true]],
+    'target_ages' => ['25', '54'], 'target_gender' => 'All',
+]);
+check('Riga dell\'API letta', $parsed !== null && $parsed['eu_reach'] === 10000 && count($parsed['demographics']) === 2 && $parsed['stopped_on'] === null);
+check('L\'anteprima con il codice di accesso non viene salvata', !str_contains(json_encode($parsed), 'SEGRETO'));
+check('Riga senza data scartata', MetaAdLibrary::parse(['id' => '1']) === null);
+$old = ['archive_id' => '9', 'stopped_on' => '2026-08-20', 'started_on' => '2026-08-11', 'eu_reach' => 5000] + $parsed;
+$insights = MetaAdLibrary::insights([$parsed, $old], 10.0, '2026-09-29');
+check('Spesa stimata: copertura × 1,3–2,2 visualizzazioni × costo per 1.000', $insights['spend'] === ['low' => 195, 'high' => 330], json_encode($insights['spend']));
+check('Negli ultimi 30 giorni conta solo la parte caduta nel periodo', $insights['spend_30d'] === ['low' => 65, 'high' => 110], json_encode($insights['spend_30d']));
+check('Attiva da 60 giorni = inserzione che funziona', ($insights['winners'][0]['archive_id'] ?? '') === '111222333' && $insights['active'] === 1);
+check('Pubblico: età principale e quota di donne', $insights['top_age'] === '25-34' && $insights['women_percent'] === 70, json_encode([$insights['top_age'], $insights['women_percent']]));
+check('Zone incluse ed escluse', ($insights['places'][0] ?? null) === ['name' => 'Pescara', 'ads' => 2] && $insights['excluded_places'] === ['Chieti']);
+check('Offerte trovate nei testi', in_array('Sconto del 20% fino a domenica.', $insights['offers'], true) && in_array('Prova gratis', $insights['offers'], true), json_encode($insights['offers']));
+check('Sito di destinazione', ($insights['domains'][0]['domain'] ?? '') === 'rivale.it');
+
+$competitorId = (int)$competitor[1]['data']['id'];
+expectStatus('Viewer non rilegge le inserzioni', req('POST', "/competitors/{$competitorId}/ads", $viewer, []), 403);
+expectStatus('B non rilegge le inserzioni di A', req('POST', "/competitors/{$competitorId}/ads", $b['token'], []), 404);
+expectStatus('B non vede le inserzioni dei concorrenti di A', req('GET', "/brands/{$brandA['id']}/competitor-ads", $b['token']), 404);
+expectStatus('Pagina non valida rifiutata', req('POST', "/competitors/{$competitorId}/ads", $editor, ['meta_page' => 'https://example.com']), MetaAdLibrary::source() === null ? 422 : 422);
+expectStatus('Costo per 1.000 fuori scala rifiutato', req('PATCH', '/competitor-ads/settings', $editor, ['cpm' => 1000]), 422);
+if (MetaAdLibrary::source() === 'sample') {
+    $sync = req('POST', "/competitors/{$competitorId}/ads", $editor, []);
+    expectStatus('Lettura inserzioni avviata (202)', $sync, 202);
+    check('Lettura finita', (waitJob((int)($sync[1]['data']['job_id'] ?? 0), $editor)['status'] ?? '') === 'done');
+    $view = req('GET', "/brands/{$brandA['id']}/competitor-ads", $a['token'])[1]['data'];
+    $mine = array_values(array_filter($view['competitors'], fn($c) => $c['id'] === $competitorId))[0] ?? [];
+    check('Inserzioni con spesa stimata, pubblico e zone', count($mine['ads'] ?? []) > 0 && ($mine['insights']['spend']['high'] ?? 0) > 0 && $mine['insights']['places'], json_encode($mine['insights'] ?? null));
+    check('Riepilogo dell\'AI con una sponsorizzata migliore', ($mine['summary']['counter_ad']['primary_text'] ?? '') !== '');
+    check('Link pubblici all\'archivio, senza codici di accesso', str_starts_with($mine['ads'][0]['url'] ?? '', 'https://www.facebook.com/ads/library/?id=') && !str_contains(json_encode($view), 'access_token'));
+    $high = $mine['insights']['spend']['high'];
+    req('PATCH', '/competitor-ads/settings', $editor, ['cpm' => 12]);
+    $doubled = req('GET', "/brands/{$brandA['id']}/competitor-ads", $a['token'])[1]['data'];
+    check('Con un costo per 1.000 doppio la stima raddoppia', abs(array_values(array_filter($doubled['competitors'], fn($c) => $c['id'] === $competitorId))[0]['insights']['spend']['high'] - $high * 2) <= 2);
+    req('PATCH', '/competitor-ads/settings', $editor, ['cpm' => null]);
+} else {
+    expectStatus('Senza archivio Meta collegato la lettura è rifiutata', req('POST', "/competitors/{$competitorId}/ads", $editor, []), 422);
+}
+
+echo "\nLingua dei contenuti\n";
+check('Il cliente nasce in italiano', (req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data']['content_language'] ?? '') === 'it');
+expectStatus('Lingua sconosciuta rifiutata', req('PATCH', "/brands/{$brandA['id']}", $editor, ['content_language' => 'fr']), 422);
+req('PATCH', "/brands/{$brandA['id']}", $editor, ['content_language' => 'en']);
+check('Contenuti in inglese per un cliente straniero', (req('GET', "/brands/{$brandA['id']}", $a['token'])[1]['data']['content_language'] ?? '') === 'en');
+req('PATCH', "/brands/{$brandA['id']}", $editor, ['content_language' => 'it']);
+
 echo "\nConfronto e proposta di stile\n";
 expectStatus('Senza analisi pronte niente confronto', req('POST', "/brands/{$brandA['id']}/competition", $editor), 422);
 // Analisi simulata: il sito di prova non è raggiungibile dal worker.

@@ -79,6 +79,15 @@ final class AlertController
             }
         }
 
+        // Concorrenti che hanno lanciato nuove inserzioni negli ultimi 7 giorni.
+        foreach ($rows('SELECT c.id, c.name, c.ads_new_count, c.ads_new_at, c.ads_summary, b.id AS brand_id, b.name AS brand_name FROM competitors c
+            JOIN brand_profiles b ON b.id=c.brand_profile_id WHERE c.organization_id=? AND c.ads_new_count > 0 AND c.ads_new_at >= ?', [$org, $now->modify('-7 days')->format('Y-m-d H:i:s')]) as $r) {
+            $summary = json_decode((string)$r['ads_summary'], true);
+            $alerts[] = self::alert("competitor-ads-{$r['id']}-" . md5((string)$r['ads_new_at']), 'info', 'ti-speakerphone',
+                "{$r['brand_name']}: {$r['name']} ha " . ($r['ads_new_count'] == 1 ? 'una nuova inserzione' : "{$r['ads_new_count']} nuove inserzioni"),
+                mb_substr($summary['summary'] ?? 'Guarda cosa sta sponsorizzando e a chi.', 0, 160), "/clients/{$r['brand_id']}", ['tab' => 'competitors']);
+        }
+
         // Meta ha cambiato le pagine delle regole delle inserzioni e l'agenzia non l'ha ancora letto.
         $policy = MetaPolicyMonitor::unread($org);
         if ($policy) {

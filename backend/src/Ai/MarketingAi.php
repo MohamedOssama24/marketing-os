@@ -78,6 +78,14 @@ interface MarketingAi
     public function styleProposal(array $brand, array $market): array;
 
     /**
+     * Cosa dicono le inserzioni di un concorrente (offerta, pubblico, tono) e una sponsorizzata del cliente che fa meglio.
+     * @param list<array{text: string, title: string, started_on: string, days: int, active: bool, places: list<string>}> $ads
+     * @param array{top_age: ?string, women_percent: ?int, places: list<string>} $audience
+     * @return array{summary: string, offer: string, audience: string, tone: string, counter_ad: array{primary_text: string, headline: string}}
+     */
+    public function competitorAds(array $brand, string $competitor, array $ads, array $audience): array;
+
+    /**
      * Diagnosi strategica dell'attività a partire dal sito, come la farebbe un amministratore delegato:
      * giudizio, modello di business, proposta di valore, pagella per area, SWOT, priorità, nuove entrate, indicatori e domande al cliente.
      * @param list<array{key: string, ok: bool, label: string, detail: string}> $checks
