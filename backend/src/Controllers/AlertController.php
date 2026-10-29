@@ -79,6 +79,16 @@ final class AlertController
             }
         }
 
+        // Meta ha cambiato le pagine delle regole delle inserzioni e l'agenzia non l'ha ancora letto.
+        $policy = MetaPolicyMonitor::unread($org);
+        if ($policy) {
+            $first = json_decode((string)$policy[0]['summary'], true);
+            $high = array_filter($policy, fn($c) => (json_decode((string)$c['summary'], true)['impact'] ?? '') === 'alta');
+            $alerts[] = self::alert('meta-rules-' . md5($policy[0]['detected_at']), $high ? 'danger' : 'warning', 'ti-brand-meta',
+                count($policy) === 1 ? "Meta ha cambiato le regole: {$policy[0]['title']}" : 'Meta ha cambiato ' . count($policy) . ' pagine di regole',
+                mb_substr($first['summary'] ?? 'Leggi cosa è cambiato prima di pubblicare nuove sponsorizzate.', 0, 160), '/ads/rules', []);
+        }
+
         $order = ['danger' => 0, 'warning' => 1, 'info' => 2];
         usort($alerts, fn($a, $b) => $order[$a['severity']] <=> $order[$b['severity']]);
         return $alerts;

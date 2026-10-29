@@ -246,6 +246,40 @@ final class FakeMarketingAi implements MarketingAi
         ];
     }
 
+    public function adReview(array $brand, array $ad, ?array $landing, array $localIssues): array
+    {
+        $severities = array_column($localIssues, 'severity');
+        $verdict = in_array('block', $severities, true) ? 'blocked' : (in_array('warn', $severities, true) ? 'warning' : 'ok');
+        $issues = [];
+        if ($ad['url'] && !$landing) {
+            $issues[] = ['severity' => 'warn', 'title' => 'Pagina di destinazione non raggiungibile', 'excerpt' => $ad['url'],
+                'why' => 'Meta respinge le inserzioni che portano a pagine che non si aprono.', 'fix' => 'Controlla il link prima di pubblicare.'];
+            if ($verdict === 'ok') $verdict = 'warning';
+        }
+        $first = trim((string)strtok($ad['primary_text'], "\n"));
+        return [
+            'verdict' => $verdict,
+            'summary' => ['ok' => 'L\'inserzione rispetta le regole controllate.', 'warning' => 'L\'inserzione si può pubblicare, ma ci sono punti da sistemare.', 'blocked' => 'Così com\'è Meta la respingerebbe.'][$verdict]
+                . ' [Revisione di esempio: imposta ANTHROPIC_API_KEY per quella completa]',
+            'issues' => $issues,
+            'improved' => [
+                'primary_text' => mb_substr($first !== '' ? $first : $ad['primary_text'], 0, 125),
+                'headline' => mb_substr($ad['headline'] ?: ($brand['name'] ?? ''), 0, 40),
+                'description' => mb_substr($ad['description'], 0, 30),
+            ],
+            'audience_tip' => 'Parti con il pubblico Advantage+ e almeno 5 € al giorno per 7 giorni, poi guarda il costo per risultato.',
+        ];
+    }
+
+    public function policyChange(string $title, string $topic, array $added, array $removed): array
+    {
+        return [
+            'summary' => "Meta ha modificato la pagina «{$title}»: " . count($added) . ' frasi aggiunte e ' . count($removed) . ' tolte. Leggile qui sotto. [Riepilogo di esempio: imposta ANTHROPIC_API_KEY per quello completo]',
+            'impact' => 'media',
+            'actions' => ["Ricontrolla le sponsorizzate che riguardano: {$topic}"],
+        ];
+    }
+
     private static function nameFromTitle(string $title, string $host): string
     {
         foreach (preg_split('/\s+[|\-–—:·•]\s+/u', $title) ?: [] as $part) {

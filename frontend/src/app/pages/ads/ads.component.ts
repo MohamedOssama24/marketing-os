@@ -1,11 +1,13 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AdWizardComponent } from './ad-wizard.component';
 import { AuthService } from '../../core/auth.service';
 import {
-  AdImportResult, AdPlatform, AdSpend, AdSpendInput, AdSummary, Brand, INVOICE_STATUS_LABELS, PLATFORM_LABELS, Project, apiErrorMessage,
+  AdImportResult, AdPlan, AdPlatform, AdSpend, AdSpendInput, AdSummary, Brand, INVOICE_STATUS_LABELS, PLATFORM_LABELS, Project, apiErrorMessage,
 } from '../../core/models';
 
 const MONTH_INITIALS = ['G', 'F', 'M', 'A', 'M', 'G', 'L', 'A', 'S', 'O', 'N', 'D'];
@@ -17,7 +19,7 @@ type Draft = Omit<AdSpendInput, 'spent'> & { id: number | null; spent: number | 
 @Component({
   selector: 'app-ads',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, DecimalPipe, FormsModule],
+  imports: [AdWizardComponent, CurrencyPipe, DatePipe, DecimalPipe, FormsModule, RouterLink],
   template: `
     <div class="page-head">
       <div>
@@ -34,14 +36,50 @@ type Draft = Omit<AdSpendInput, 'spent'> & { id: number | null; spent: number | 
           <strong>{{ year() }}</strong>
           <button class="icon-btn" (click)="shiftYear(1)" aria-label="Anno successivo"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
         </div>
+        <a class="btn ghost" routerLink="/ads/rules"><i class="ti ti-brand-meta" aria-hidden="true"></i> Regole Meta
+          @if (unreadRules()) { <span class="count-pill">{{ unreadRules() }}</span> }</a>
         @if (auth.canEdit()) {
           <button class="btn ghost" (click)="openImport()" [disabled]="!brands().length"><i class="ti ti-file-import" aria-hidden="true"></i> Importa da Meta</button>
-          <button class="btn primary" (click)="openForm()" [disabled]="!brands().length"><i class="ti ti-plus" aria-hidden="true"></i> Aggiungi spesa</button>
+          <button class="btn ghost" (click)="openForm()" [disabled]="!brands().length"><i class="ti ti-plus" aria-hidden="true"></i> Aggiungi spesa</button>
+          <button class="btn primary" (click)="openWizard()" [disabled]="!brands().length"><i class="ti ti-speakerphone" aria-hidden="true"></i> Nuova sponsorizzata</button>
         }
       </div>
     </div>
 
     @if (error()) { <div class="alert">{{ error() }}</div> }
+
+    @if (unreadRules()) {
+      <a class="notice warning rules-notice" routerLink="/ads/rules"><i class="ti ti-bell-ringing" aria-hidden="true"></i>
+        <span><strong>Meta ha cambiato le regole delle inserzioni.</strong> Leggi cosa è cambiato prima di pubblicare nuove sponsorizzate.</span></a>
+    }
+
+    @if (plans().length) {
+      <div class="section-head"><h2>Sponsorizzate preparate</h2></div>
+      <div class="plan-list">
+        @for (p of plans(); track p.id) {
+          <button class="card plan-row" (click)="openWizard(p)">
+            <span class="swatch small" [style.background]="p.brand_color ?? '#5B4BDB'"></span>
+            <span class="grow"><strong>{{ p.name }}</strong><br />
+              <small class="muted">{{ p.brand_name }} · {{ p.daily_budget | currency: 'EUR' }} al giorno · dal {{ p.start_date | date: 'd MMM' }}@if (p.end_date) { al {{ p.end_date | date: 'd MMM' }}}</small></span>
+            @if (p.checks) {
+              <span class="verdict-pill" [attr.data-verdict]="p.review?.verdict ?? p.checks.verdict">
+                <i class="ti" [class]="'ti ' + verdictIcons[p.review?.verdict ?? p.checks.verdict]" aria-hidden="true"></i> {{ verdictLabels[p.review?.verdict ?? p.checks.verdict] }}</span>
+            }
+            <span class="badge" [attr.data-status]="planBadge[p.status]">{{ planStatus[p.status] }}</span>
+          </button>
+        }
+      </div>
+    } @else if (auth.canEdit() && brands().length) {
+      <button class="card plan-empty" (click)="openWizard()">
+        <span class="metric-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>
+        <span><strong>Prepara una sponsorizzata in 4 passaggi</strong><br />
+          <small class="muted">Obiettivo, pubblico, budget e testi controllati con le regole di Meta. Alla fine hai la scheda da copiare in Gestione inserzioni.</small></span>
+      </button>
+    }
+
+    @if (wizard(); as w) {
+      <app-ad-wizard [brands]="brands()" [plan]="w.plan" [contentId]="w.contentId" [brandId]="brandId" (closed)="closeWizard()" (changedPlan)="planChanged($event)" />
+    }
 
     @if (summary(); as s) {
       <div class="metrics ad-metrics">
@@ -258,8 +296,18 @@ export class AdsComponent implements OnInit {
   readonly initials = MONTH_INITIALS;
   readonly monthNames = MONTH_NAMES;
 
+  readonly planStatus = { draft: 'Bozza', ready: 'Pronta', live: 'Pubblicata', ended: 'Terminata' };
+  readonly planBadge = { draft: 'draft', ready: 'in_review', live: 'approved', ended: 'scheduled' };
+  readonly verdictLabels = { ok: 'Regole ok', warning: 'Da controllare', blocked: 'Da correggere' };
+  readonly verdictIcons = { ok: 'ti-circle-check', warning: 'ti-alert-triangle', blocked: 'ti-circle-x' };
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+
   brands = signal<Brand[]>([]);
   projects = signal<Project[]>([]);
+  plans = signal<AdPlan[]>([]);
+  unreadRules = signal(0);
+  wizard = signal<{ plan: AdPlan | null; contentId: number | null } | null>(null);
   rows = signal<AdSpend[]>([]);
   summary = signal<AdSummary | null>(null);
   year = signal(new Date().getFullYear());
@@ -286,18 +334,36 @@ export class AdsComponent implements OnInit {
       next: ([brands, projects]) => {
         this.brands.set(brands);
         this.projects.set(projects);
+        // Arrivando da un post con «Sponsorizza», la procedura parte già con cliente, testo e grafica del post.
+        const sponsor = Number(this.route.snapshot.queryParamMap.get('sponsor'));
+        if (sponsor) this.wizard.set({ plan: null, contentId: sponsor });
       },
       error: (err) => this.error.set(apiErrorMessage(err)),
     });
+    this.api.metaRules().subscribe({ next: (r) => this.unreadRules.set(r.monitor.unread), error: () => {} });
     this.load();
+  }
+
+  openWizard(plan: AdPlan | null = null): void {
+    this.wizard.set({ plan, contentId: null });
+  }
+
+  closeWizard(): void {
+    this.wizard.set(null);
+    if (this.route.snapshot.queryParamMap.has('sponsor')) this.router.navigate([], { queryParams: {}, replaceUrl: true });
+  }
+
+  planChanged(plan: AdPlan): void {
+    this.plans.update((list) => [plan, ...list.filter((p) => p.id !== plan.id)]);
   }
 
   load(): void {
     this.loading.set(true);
-    forkJoin([this.api.adSpend(this.year(), this.brandId), this.api.adSummary(this.year(), this.brandId)]).subscribe({
-      next: ([rows, summary]) => {
+    forkJoin([this.api.adSpend(this.year(), this.brandId), this.api.adSummary(this.year(), this.brandId), this.api.adPlans(this.brandId)]).subscribe({
+      next: ([rows, summary, plans]) => {
         this.rows.set(rows);
         this.summary.set(summary);
+        this.plans.set(plans);
         this.loading.set(false);
       },
       error: (err) => {

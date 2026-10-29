@@ -216,6 +216,19 @@ Per ogni cliente si indica chi paga le inserzioni e si segue una guida a passagg
 
 Con `ads_payer: "client"` le bozze di fattura non rifatturano la spesa pubblicitaria (il cliente paga Meta direttamente): resta la commissione calcolata sulla spesa del registro.
 
+## Regole Meta e sponsorizzate preparate
+
+Le regole di Meta (in `MetaRules`, riviste il 29/10/2026) controllano ogni sponsorizzata prima di caricarla su Gestione inserzioni. Il worker rilegge ogni giorno 18 pagine ufficiali di Meta (`MetaPolicyMonitor::SOURCES`): se il testo cambia, salva le frasi aggiunte e tolte, chiede all'AI un riepilogo e tutte le organizzazioni ricevono un avviso finché non lo segnano come letto. Un'organizzazione nuova non riceve avvisi sui cambiamenti precedenti alla sua iscrizione.
+
+- `GET /meta-rules` — tutti i ruoli. Obiettivi, pulsanti (`ctas`), categorie speciali, limiti dei testi, formati, budget, regole (`severity`: `block` vietato, `warn` con limiti, `tip` consiglio) e `monitor` (`sources`, `changes` con `summary` `{summary, impact: alta|media|bassa, actions}`, `unread`, `last_check`).
+- `POST /meta-rules/seen` — tutti i ruoli. Segna i cambiamenti come letti per l'organizzazione; restituisce `monitor`.
+- `POST /meta-rules/refresh` — owner, admin. Controlla subito tutte le pagine (lavoro `check_meta_policies`, 202 con `job_id`); 429 se il controllo è di meno di 10 minuti fa.
+- `POST /ad-plans/check` — tutti i ruoli. Controllo immediato di una sponsorizzata non salvata: `{ verdict: ok|warning|blocked, issues: [{key, severity, title, why, fix, excerpt, source}], suggested_category }`.
+- `GET /ad-plans?brand_id=` · `GET /ad-plans/{id}` — tutti i ruoli.
+- `POST /ad-plans` · `PATCH /ad-plans/{id}` — owner, admin, editor. `brand_id`, `content_id` facoltativo, `objective` (`awareness`, `traffic`, `engagement`, `leads`, `app_promotion`, `sales`), `special_category` (`none`, `financial`, `employment`, `housing`, `social_issues`), `audience` `{location, radius_km 0-80, age_min, age_max 13-65, genders all|female|male, interests, advantage}`, `daily_budget`, `start_date`, `end_date`, `primary_text`, `headline`, `description`, `cta` (codici di Meta, es. `LEARN_MORE`), `url`, `name` facoltativo. Il controllo delle regole si salva in `checks` a ogni modifica. Con solo `{status}` cambia lo stato (`draft`, `ready`, `live`, `ended`).
+- `POST /ad-plans/{id}/review` — owner, admin, editor. Revisione AI (lavoro `ad_review`, 202): rilegge la pagina di destinazione e salva `review` `{verdict, summary, issues, improved: {primary_text, headline, description}, audience_tip, landing_ok}`.
+- `DELETE /ad-plans/{id}` — owner, admin, editor.
+
 ## Link tracciati e clic
 
 Un link breve `/r/{codice}` (fuori da `/api/v1`, pubblico) conta i clic e reindirizza (302) alla destinazione con i parametri UTM, così le visite compaiono anche in Google Analytics. L'indirizzo pubblico si basa su `APP_URL`: in produzione deve essere il dominio raggiungibile da internet.

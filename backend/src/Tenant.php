@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 final class Tenant
 {
-    private const TABLES = ['brand_profiles', 'projects', 'content_items', 'assets', 'jobs', 'users', 'ad_spend', 'invoices', 'prospects', 'style_examples', 'time_entries', 'review_replies', 'client_requests', 'competitors'];
+    private const TABLES = ['brand_profiles', 'projects', 'content_items', 'assets', 'jobs', 'users', 'ad_spend', 'invoices', 'prospects', 'style_examples', 'time_entries', 'review_replies', 'client_requests', 'competitors', 'ad_plans'];
 
     public static function find(string $table, int $id, int $organizationId, string $columns = '*'): ?array
     {

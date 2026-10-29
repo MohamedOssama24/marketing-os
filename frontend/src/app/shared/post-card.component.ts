@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, Output, ViewChild, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Observable, switchMap } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { ApiService } from '../core/api.service';
@@ -26,7 +27,7 @@ export const CHANNEL_ICONS: Record<string, string> = {
 @Component({
   selector: 'app-post-card',
   standalone: true,
-  imports: [DatePipe, FormsModule, PostVisualComponent, AssetPreviewComponent, PublishDialogComponent],
+  imports: [DatePipe, FormsModule, RouterLink, PostVisualComponent, AssetPreviewComponent, PublishDialogComponent],
   template: `
     <article class="post-card" [class.editing]="editing()">
       <div class="phone">
@@ -213,6 +214,9 @@ export const CHANNEL_ICONS: Record<string, string> = {
           }
           @if (item.status === 'published') {
             <button class="btn ghost small full-width" (click)="publishing.set(true)"><i class="ti ti-circle-check" aria-hidden="true"></i> Pubblicato@if (item.tracked_link) { · {{ item.tracked_link.clicks }} clic} · apri il kit</button>
+          }
+          @if (auth.canEdit() && ['approved', 'scheduled', 'published'].includes(item.status) && (item.channel === 'facebook' || item.channel === 'instagram')) {
+            <a class="btn ghost small full-width" routerLink="/ads" [queryParams]="{ sponsor: item.id }"><i class="ti ti-speakerphone" aria-hidden="true"></i> Sponsorizza su Meta</a>
           }
         </div>
       }

@@ -101,6 +101,16 @@ $router->add('DELETE', '/api/v1/ad-spend/{id}', [AdSpendController::class, 'dest
 $router->add('POST', '/api/v1/brands/{brandId}/ad-spend/import', [AdSpendController::class, 'import']);
 $router->add('GET', '/api/v1/brands/{brandId}/ads-setup', [AdsSetupController::class, 'show']);
 $router->add('PATCH', '/api/v1/brands/{brandId}/ads-setup', [AdsSetupController::class, 'update']);
+$router->add('GET', '/api/v1/meta-rules', [AdPlanController::class, 'rules']);
+$router->add('POST', '/api/v1/meta-rules/seen', [AdPlanController::class, 'markRulesSeen']);
+$router->add('POST', '/api/v1/meta-rules/refresh', [AdPlanController::class, 'refreshRules']);
+$router->add('POST', '/api/v1/ad-plans/check', [AdPlanController::class, 'check']);
+$router->add('GET', '/api/v1/ad-plans', [AdPlanController::class, 'index']);
+$router->add('POST', '/api/v1/ad-plans', [AdPlanController::class, 'store']);
+$router->add('GET', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'show']);
+$router->add('PATCH', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'update']);
+$router->add('DELETE', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'destroy']);
+$router->add('POST', '/api/v1/ad-plans/{id}/review', [AdPlanController::class, 'review']);
 
 $router->add('GET', '/api/v1/billing/clients', [BillingController::class, 'clients']);
 $router->add('PATCH', '/api/v1/billing/clients/{brandId}', [BillingController::class, 'updateClient']);

@@ -755,6 +755,60 @@ waitJob((int)($started[1]['data']['job_id'] ?? 0), $editor);
 $siteState = req('GET', "/brands/{$brandA['id']}/site-analysis", $a['token'])[1]['data'];
 check('Un sito interno non viene letto e l\'errore si vede', !$siteState['analyzing'] && ($siteState['job_error'] ?? '') !== '' && $siteState['analysis'] === null, json_encode($siteState));
 
+echo "\nSponsorizzate con le regole di Meta\n";
+$rules = req('GET', '/meta-rules', $viewer);
+expectStatus('Regole Meta leggibili anche dal viewer', $rules, 200);
+check('Regole: obiettivi, pulsanti, pagine controllate', count($rules[1]['data']['objectives'] ?? []) === 6 && count($rules[1]['data']['ctas'] ?? []) > 10
+    && count($rules[1]['data']['monitor']['sources'] ?? []) === count(MetaPolicyMonitor::SOURCES), substr($rules[2], 0, 300));
+$live = req('POST', '/ad-plans/check', $viewer, ['objective' => 'traffic', 'primary_text' => 'Sei sovrappeso? Prova il nostro metodo', 'daily_budget' => 10]);
+check('Controllo immediato mentre si scrive', ($live[1]['data']['verdict'] ?? '') === 'blocked' && in_array('personal_attributes', array_column($live[1]['data']['issues'] ?? [], 'key'), true), $live[2]);
+$planInput = ['brand_id' => $brandA['id'], 'content_id' => $contentA['id'], 'objective' => 'traffic',
+    'audience' => ['location' => 'Pescara', 'radius_km' => 10, 'age_min' => 25, 'age_max' => 60, 'interests' => ['cucina']],
+    'daily_budget' => 8, 'start_date' => '2030-03-04', 'end_date' => '2030-03-17',
+    'primary_text' => 'Degustazione di vini e pizza al forno a legna. Prenota il tavolo per sabato.', 'headline' => 'Prenota il tuo tavolo', 'cta' => 'BOOK_NOW', 'url' => 'https://127.0.0.1/prenota'];
+expectStatus('Viewer non prepara sponsorizzate', req('POST', '/ad-plans', $viewer, $planInput), 403);
+expectStatus('B non usa il cliente di A', req('POST', '/ad-plans', $b['token'], $planInput), 404);
+$brandB = req('POST', '/brands', $b['token'], ['name' => 'Brand B'])[1]['data'];
+expectStatus('B non usa il post di A', req('POST', '/ad-plans', $b['token'], ['brand_id' => $brandB['id']] + $planInput), 404);
+expectStatus('Età non valida rifiutata', req('POST', '/ad-plans', $editor, ['audience' => ['age_min' => 40, 'age_max' => 20]] + $planInput), 422);
+expectStatus('Fine prima dell\'inizio rifiutata', req('POST', '/ad-plans', $editor, ['end_date' => '2030-03-01'] + $planInput), 422);
+expectStatus('Pulsante fuori elenco rifiutato', req('POST', '/ad-plans', $editor, ['cta' => 'COMPRA'] + $planInput), 422);
+$plan = req('POST', '/ad-plans', $editor, $planInput);
+expectStatus('Editor prepara una sponsorizzata', $plan, 201);
+$plan = $plan[1]['data'] ?? [];
+check('Controllo salvato: alcol per maggiorenni è un avviso', ($plan['checks']['verdict'] ?? '') === 'warning' && in_array('alcohol', array_column($plan['checks']['issues'] ?? [], 'key'), true), json_encode($plan['checks'] ?? null));
+check('Nome proposto e pubblico Advantage+ attivo', str_starts_with($plan['name'] ?? '', 'Traffico') && ($plan['audience']['advantage'] ?? false) === true);
+expectStatus('B non vede la sponsorizzata di A', req('GET', "/ad-plans/{$plan['id']}", $b['token']), 404);
+expectStatus('B non la modifica', req('PATCH', "/ad-plans/{$plan['id']}", $b['token'], ['status' => 'live']), 404);
+expectStatus('B non chiede la revisione', req('POST', "/ad-plans/{$plan['id']}/review", $b['token']), 404);
+check('Lista di B senza la sponsorizzata di A', !in_array($plan['id'], array_column(req('GET', '/ad-plans', $b['token'])[1]['data'] ?? [], 'id')));
+$updated = req('PATCH', "/ad-plans/{$plan['id']}", $editor, ['audience' => ['age_min' => 16] + $plan['audience']]);
+check('Modifica ricontrollata: alcol sotto i 18 bloccato', ($updated[1]['data']['checks']['verdict'] ?? '') === 'blocked', $updated[2]);
+expectStatus('Revisione AI avviata (202)', req('POST', "/ad-plans/{$plan['id']}/review", $editor), 202);
+waitJob((int)Database::connection()->query('SELECT review_job_id FROM ad_plans WHERE id=' . (int)$plan['id'])->fetchColumn(), $editor);
+$reviewed = req('GET', "/ad-plans/{$plan['id']}", $editor)[1]['data'];
+check('Revisione pronta con testi corretti', ($reviewed['review']['verdict'] ?? '') === 'blocked' && ($reviewed['review']['improved']['primary_text'] ?? '') !== '', json_encode($reviewed));
+check('Pagina interna non letta per la revisione', ($reviewed['review']['landing_ok'] ?? null) === false);
+$state = req('PATCH', "/ad-plans/{$plan['id']}", $editor, ['status' => 'live']);
+check('Segnata come pubblicata', ($state[1]['data']['status'] ?? '') === 'live', $state[2]);
+expectStatus('Stato non valido rifiutato', req('PATCH', "/ad-plans/{$plan['id']}", $editor, ['status' => 'online']), 422);
+expectStatus('Editor non forza il controllo delle pagine Meta', req('POST', '/meta-rules/refresh', $editor), 403);
+
+// Un cambiamento simulato su una pagina di Meta: avviso finché l'agenzia non lo segna come letto.
+$pdo = Database::connection();
+$source = $pdo->query("SELECT id FROM meta_policy_sources WHERE slug='alcohol'")->fetchColumn();
+$pdo->prepare('INSERT INTO meta_policy_changes (source_id, detected_at, added, removed, summary) VALUES (?, ?, ?, ?, ?)')
+    ->execute([$source, date('Y-m-d H:i:s', time() + 5), '["Regola di prova"]', '[]', json_encode(['summary' => 'Cambiamento di prova', 'impact' => 'alta', 'actions' => []])]);
+$changeId = (int)$pdo->lastInsertId();
+$alerts = array_column(req('GET', '/alerts', $a['token'])[1]['data'] ?? [], 'severity', 'link');
+check('Avviso "Meta ha cambiato le regole"', ($alerts['/ads/rules'] ?? '') === 'danger', json_encode($alerts));
+sleep(6);
+$seen = req('POST', '/meta-rules/seen', $viewer);
+check('Segnato come letto', ($seen[1]['data']['unread'] ?? -1) === 0, substr($seen[2], 0, 300));
+check('Avviso sparito', !array_key_exists('/ads/rules', array_column(req('GET', '/alerts', $a['token'])[1]['data'] ?? [], 'severity', 'link')));
+$pdo->prepare('DELETE FROM meta_policy_changes WHERE id=?')->execute([$changeId]);
+expectStatus('Sponsorizzata eliminata', req('DELETE', "/ad-plans/{$plan['id']}", $editor), 200);
+
 echo "\nRate limiting\n";
 $target = 'm1-ratelimit-' . bin2hex(random_bytes(4)) . '@example.test';
 for ($i = 0; $i < 5; $i++) req('POST', '/auth/login', null, ['email' => $target, 'password' => 'sbagliata-123456']);

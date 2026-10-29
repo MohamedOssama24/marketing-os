@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdCheck, AdPlan, AdPlanInput, AdPlanStatus, MetaMonitor, MetaRulebook, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
 } from './models';
 
@@ -165,6 +165,18 @@ export class ApiService {
   // Sponsorizzate Meta: chi paga, account pubblicitario, passaggi della guida
   adsSetup = (brandId: number) => this.get<AdsSetup>(`/brands/${brandId}/ads-setup`);
   updateAdsSetup = (brandId: number, data: Partial<Pick<AdsSetup, 'ads_payer' | 'meta_ad_account_id' | 'steps'>>) => this.patch<AdsSetup>(`/brands/${brandId}/ads-setup`, data);
+
+  // Regole di Meta e sponsorizzate preparate con la procedura guidata
+  metaRules = () => this.get<MetaRulebook>('/meta-rules');
+  markMetaRulesSeen = () => this.post<MetaMonitor>('/meta-rules/seen');
+  refreshMetaRules = () => this.post<{ job_id: number }>('/meta-rules/refresh');
+  checkAd = (ad: Partial<AdPlanInput>) => this.post<AdCheck>('/ad-plans/check', ad);
+  adPlans = (brandId?: number | null) => this.get<AdPlan[]>('/ad-plans' + (brandId ? `?brand_id=${brandId}` : ''));
+  adPlan = (id: number) => this.get<AdPlan>(`/ad-plans/${id}`);
+  createAdPlan = (ad: AdPlanInput) => this.post<AdPlan>('/ad-plans', ad);
+  updateAdPlan = (id: number, ad: Partial<AdPlanInput> & { status?: AdPlanStatus }) => this.patch<AdPlan>(`/ad-plans/${id}`, ad);
+  deleteAdPlan = (id: number) => this.delete(`/ad-plans/${id}`);
+  reviewAdPlan = (id: number) => this.post<AdPlan>(`/ad-plans/${id}/review`);
 
   // Link tracciati
   links(filter: { brandId?: number | null; contentId?: number } = {}): Observable<TrackedLink[]> {

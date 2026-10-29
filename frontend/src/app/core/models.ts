@@ -826,3 +826,134 @@ export interface SiteAnalysisState {
   analyzing: boolean;
   job_error: string | null;
 }
+
+// Regole di Meta e sponsorizzate preparate con la procedura guidata
+
+export type AdObjective = 'awareness' | 'traffic' | 'engagement' | 'leads' | 'app_promotion' | 'sales';
+export type AdSpecialCategory = 'none' | 'financial' | 'employment' | 'housing' | 'social_issues';
+export type AdPlanStatus = 'draft' | 'ready' | 'live' | 'ended';
+export type RuleSeverity = 'block' | 'warn' | 'tip';
+export type AdVerdict = 'ok' | 'warning' | 'blocked';
+
+export interface MetaRule {
+  key: string;
+  severity: RuleSeverity;
+  title: string;
+  why: string;
+  fix: string;
+  source: string | null;
+}
+
+export interface MetaPolicySource {
+  id: number;
+  slug: string;
+  title: string;
+  topic: string;
+  url: string;
+  checked_at: string | null;
+  changed_at: string | null;
+  last_error: string | null;
+}
+
+export interface MetaPolicyChange {
+  id: number;
+  detected_at: string;
+  slug: string;
+  title: string;
+  url: string;
+  added: string[];
+  removed: string[];
+  summary: { summary: string; impact: 'alta' | 'media' | 'bassa'; actions: string[] } | null;
+  unread: boolean;
+}
+
+export interface MetaMonitor {
+  rules_version: string;
+  last_check: string | null;
+  unread: number;
+  sources: MetaPolicySource[];
+  changes: MetaPolicyChange[];
+}
+
+export interface MetaRulebook {
+  version: string;
+  objectives: { key: AdObjective; label: string; icon: string; when: string; ctas: string[]; needs_url: boolean }[];
+  ctas: { code: string; label: string }[];
+  special_categories: { key: AdSpecialCategory; label: string; detail: string }[];
+  text_limits: { primary_text: number; headline: number; description: number };
+  specs: { placement: string; ratio: string; size: string; note: string }[];
+  budget: { min_daily: number; suggested_daily: number };
+  rules: MetaRule[];
+  monitor: MetaMonitor;
+}
+
+export interface AdIssue {
+  key?: string;
+  severity: RuleSeverity;
+  title: string;
+  why: string;
+  fix: string;
+  excerpt: string;
+  source?: string | null;
+}
+
+export interface AdCheck {
+  verdict: AdVerdict;
+  issues: AdIssue[];
+  suggested_category: AdSpecialCategory | null;
+  version: string;
+}
+
+export interface AdAudience {
+  location: string;
+  radius_km: number;
+  age_min: number;
+  age_max: number;
+  genders: 'all' | 'female' | 'male';
+  interests: string[];
+  advantage: boolean;
+}
+
+export interface AdPlanInput {
+  brand_id: number;
+  content_id: number | null;
+  name: string;
+  objective: AdObjective;
+  special_category: AdSpecialCategory;
+  audience: AdAudience;
+  daily_budget: number;
+  start_date: string;
+  end_date: string | null;
+  primary_text: string;
+  headline: string;
+  description: string;
+  cta: string;
+  url: string;
+}
+
+export interface AdReview {
+  verdict: AdVerdict;
+  summary: string;
+  issues: AdIssue[];
+  improved: { primary_text: string; headline: string; description: string } | null;
+  audience_tip: string;
+  landing_ok: boolean | null;
+}
+
+export interface AdPlan extends Omit<AdPlanInput, 'brand_id' | 'content_id' | 'url'> {
+  id: number;
+  brand_profile_id: number;
+  brand_name: string;
+  brand_color: string | null;
+  content_item_id: number | null;
+  url: string | null;
+  checks: AdCheck | null;
+  review: AdReview | null;
+  reviewed_at: string | null;
+  review_status: 'queued' | 'running' | 'done' | 'failed' | null;
+  review_error: string | null;
+  status: AdPlanStatus;
+  ads_manager_url: string;
+  created_at: string;
+  updated_at: string;
+}

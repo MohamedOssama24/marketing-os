@@ -352,6 +352,38 @@ $handlers = [
         return ['competitor_id' => (int)$competitor['id']];
     },
 
+    /** Revisione di una sponsorizzata come la farebbe Meta, con la pagina di destinazione letta dal link. */
+    'ad_review' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        Tenant::find('ad_plans', (int)$job['payload']['ad_plan_id'], $orgId, 'id') ?? throw new GenerationException('La sponsorizzata non esiste più.');
+        $plan = AdPlanController::find((int)$job['payload']['ad_plan_id'], $orgId);
+        $landing = null;
+        if ($plan['url']) {
+            try {
+                $site = SiteReader::read($plan['url']);
+                $landing = ['title' => $site['title'], 'text' => implode("\n", array_column($site['pages'], 'text'))];
+            } catch (SiteException) {}
+        }
+        $checks = MetaRules::check($plan);
+        $review = MarketingAis::make()->adReview(loadBrand($orgId, $plan['brand_profile_id']), $plan, $landing, $checks['issues']);
+        $clean = [
+            'verdict' => $review['verdict'],
+            'summary' => mb_substr(trim((string)($review['summary'] ?? '')), 0, 1000),
+            'issues' => array_map(fn($i) => ['severity' => in_array($i['severity'], ['block', 'warn', 'tip'], true) ? $i['severity'] : 'warn'] + $i,
+                cleanObjects($review['issues'] ?? [], ['title', 'severity', 'excerpt', 'why', 'fix'], 8)),
+            'improved' => cleanObjects([$review['improved'] ?? []], ['primary_text', 'headline', 'description'], 1, 2000)[0] ?? null,
+            'audience_tip' => mb_substr(trim((string)($review['audience_tip'] ?? '')), 0, 500),
+            'landing_ok' => $plan['url'] ? $landing !== null : null,
+        ];
+        Database::connection()->prepare('UPDATE ad_plans SET review=?, reviewed_at=?, checks=? WHERE id=? AND organization_id=?')->execute([
+            json_encode($clean, JSON_UNESCAPED_UNICODE), date('Y-m-d H:i:s'), json_encode($checks, JSON_UNESCAPED_UNICODE), $plan['id'], $orgId,
+        ]);
+        return ['ad_plan_id' => $plan['id'], 'verdict' => $clean['verdict']];
+    },
+
+    /** Controllo immediato delle pagine delle regole di Meta, chiesto dall'agenzia. */
+    'check_meta_policies' => fn(array $job): array => ['changed' => MetaPolicyMonitor::refresh(true)],
+
     /** Confronta il sito del cliente con quelli dei concorrenti e propone uno stile che lo distingue. */
     'competition_study' => function (array $job): array {
         $orgId = (int)$job['organization_id'];
@@ -477,6 +509,12 @@ while (true) {
     if (time() >= $nextRefresh) {
         try {
             refreshCompetitors();
+        } catch (Throwable $e) {
+            error_log((string)$e);
+        }
+        // Le pagine con le regole di Meta si ricontrollano una volta al giorno (solo quelle scadute).
+        try {
+            MetaPolicyMonitor::refresh();
         } catch (Throwable $e) {
             error_log((string)$e);
         }

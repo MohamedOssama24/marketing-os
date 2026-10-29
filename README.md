@@ -7,6 +7,8 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Anteprime realistiche** dei post (Instagram, Facebook, LinkedIn, blog, email) con grafica esportabile in PNG.
 - **Calendario** mensile con trascinamento, **approvazioni** con note di revisione, **dashboard** della settimana.
 - **Sponsorizzate**: spesa, clic e risultati per cliente, inseriti a mano o importati dal CSV di Gestione inserzioni di Meta, con grafici per mese e per cliente. Nella scheda del cliente, una guida a passaggi per collegare l'account pubblicitario Meta e scegliere chi paga (il cliente con la sua carta o l'agenzia, che rifattura).
+- **Sponsorizzate a norma Meta**: «Nuova sponsorizzata» guida in 4 passaggi (obiettivo, pubblico, budget, testi), anche partendo da un post approvato, e controlla mentre scrivi le regole di Meta: attributi personali, prima e dopo, alcol solo per maggiorenni, gioco d'azzardo vietato in Italia, categorie speciali da dichiarare, politica non ammessa nell'UE, lunghezza dei testi, budget minimo. L'AI può rileggere inserzione e pagina di destinazione come un revisore di Meta e proporre i testi corretti. Alla fine c'è la scheda da copiare in Gestione inserzioni, nell'ordine dei campi di Meta e con i link UTM.
+- **Regole Meta sempre aggiornate**: ogni giorno il worker rilegge 18 pagine ufficiali di Meta sulle inserzioni; se cambiano, l'agenzia riceve un avviso con le frasi aggiunte e tolte e un riepilogo dell'AI su cosa fare. Pannello in Sponsorizzate → Regole Meta.
 - **Link e clic**: link brevi da mettere nei post che contano quante persone cliccano, da quale social e da quale dispositivo, e portano al sito con i parametri UTM.
 - **Report clienti**: ogni mese un report con i colori e il logo del cliente (post pubblicati, clic, sponsorizzate, confronto con il mese prima e il commento dell'agenzia), da scaricare in PDF o da mandare con un link che il cliente apre senza account; si vede quando lo apre.
 - **Fatturazione**: ogni mese una fattura per cliente con canone, sponsorizzate da rifatturare e commissione; stati da fatturare → fatturata → pagata ed export CSV per il commercialista.
@@ -44,9 +46,10 @@ Senza chiave API il worker crea bozze di esempio, così puoi provare tutto senza
 
 ```bash
 docker compose exec app php tests/isolation.php
+docker compose exec app php tests/meta_rules_check.php
 ```
 
-Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, analisi del sito (logo, contatti, strumenti, diagnosi), protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
+Verifica isolamento tra organizzazioni, ruoli, revisione, campagne, calendario, sponsorizzate, fatturazione, link tracciati, report pubblici, audit dei potenziali clienti, stile appreso, altri formati, ore e redditività, recensioni, portale del cliente, concorrenti, analisi del sito (logo, contatti, strumenti, diagnosi), sponsorizzate con le regole di Meta e avvisi sui cambiamenti, protezione SSRF della lettura dei siti e limite ai tentativi di login. Usa il generatore di esempio, quindi non consuma crediti AI.
 
 Le modifiche al database vanno in `backend/database/migrations/` (file numerati): il worker le applica all'avvio.
 
