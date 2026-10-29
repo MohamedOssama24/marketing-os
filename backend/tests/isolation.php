@@ -46,7 +46,7 @@ function expectStatus(string $label, array $response, int $expected): void
 function register(string $org): array
 {
     $email = 'm1-' . strtolower($org) . '-' . bin2hex(random_bytes(4)) . '@example.test';
-    $r = req('POST', '/auth/register', null, ['name' => "Owner {$org}", 'email' => $email, 'password' => 'Local-Test-Password-123', 'organization_name' => "Org {$org}"]);
+    $r = req('POST', '/auth/register', null, ['name' => "Owner {$org}", 'email' => $email, 'password' => 'Local-Test-Password-123', 'organization_name' => "Org {$org}", 'invite_code' => getenv('REGISTRATION_INVITE_CODE') ?: '']);
     if ($r[0] !== 201) { echo "Registrazione {$org} fallita: {$r[2]}\n"; exit(1); }
     return ['token' => $r[1]['data']['token']['access_token'], 'email' => $email];
 }

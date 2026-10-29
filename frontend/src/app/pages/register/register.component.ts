@@ -30,6 +30,10 @@ import { apiErrorMessage } from '../../core/models';
           <input type="password" formControlName="password" autocomplete="new-password" />
           <small class="muted">Almeno 12 caratteri.</small>
         </label>
+        <label>Codice di invito
+          <input formControlName="invite_code" autocomplete="off" />
+          <small class="muted">Se te ne hanno dato uno.</small>
+        </label>
 
         <button class="btn primary" type="submit" [disabled]="form.invalid || loading()">
           {{ loading() ? 'Creazione in corso…' : 'Registrati' }}
@@ -51,6 +55,7 @@ export class RegisterComponent {
     organization_name: ['', [Validators.required, Validators.maxLength(160)]],
     email: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(12)]],
+    invite_code: ['', [Validators.maxLength(100)]],
   });
 
   submit(): void {

@@ -17,9 +17,12 @@ Tutti i body sono JSON. Gli endpoint autenticati richiedono `Authorization: Bear
   "name": "Mario Rossi",
   "email": "mario@example.com",
   "password": "almeno-12-caratteri",
-  "organization_name": "Esempio Srl"
+  "organization_name": "Esempio Srl",
+  "invite_code": "solo se REGISTRATION_INVITE_CODE è impostato"
 }
 ```
+
+Se nel `.env` è impostato `REGISTRATION_INVITE_CODE`, senza il codice giusto la risposta è `403 invalid_invite_code`.
 
 Crea un'organizzazione e il suo primo utente con ruolo `owner`. In produzione la registrazione pubblica va protetta da rate limit, verifica email e controlli anti-abuso.
 

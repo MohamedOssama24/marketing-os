@@ -33,7 +33,7 @@ export class AuthService {
       .pipe(tap((res) => this.storeSession(res)));
   }
 
-  register(payload: { name: string; email: string; password: string; organization_name: string }): Observable<AuthResponse> {
+  register(payload: { name: string; email: string; password: string; organization_name: string; invite_code?: string }): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${API_URL}/auth/register`, payload)
       .pipe(tap((res) => this.storeSession(res)));

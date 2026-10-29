@@ -20,6 +20,11 @@ final class AuthController
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) Http::validationError('Email non valida.');
         self::assertPassword($password);
         RateLimiter::record($registerKey);
+        // Con REGISTRATION_INVITE_CODE impostato si registra solo chi ha il codice (app esposta su internet).
+        $inviteCode = (string)(getenv('REGISTRATION_INVITE_CODE') ?: '');
+        if ($inviteCode !== '' && !hash_equals($inviteCode, (string)($data['invite_code'] ?? ''))) {
+            Http::json(['error' => 'invalid_invite_code', 'message' => 'Codice di invito non valido.'], 403);
+        }
 
         $slugBase = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $organizationName) ?: $organizationName), '-'));
         $slug = ($slugBase ?: 'organization') . '-' . bin2hex(random_bytes(3));

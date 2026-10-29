@@ -1,0 +1,4 @@
+{
+  "/api": { "target": "http://localhost:8088", "secure": false },
+  "/r": { "target": "http://localhost:8088", "secure": false }
+}

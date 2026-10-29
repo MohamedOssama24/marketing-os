@@ -1,4 +1,5 @@
-export const API_URL = 'http://localhost:8088/api/v1';
+// Stessa origine del frontend: in sviluppo ng serve inoltra /api a localhost:8088 (proxy.conf.json).
+export const API_URL = '/api/v1';
 
 export type Role = 'owner' | 'admin' | 'editor' | 'viewer';
 export type ProjectStatus = 'draft' | 'active' | 'paused' | 'completed' | 'archived';

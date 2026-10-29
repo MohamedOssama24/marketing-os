@@ -31,9 +31,12 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "8088:80"
+      # Solo da questo PC: da fuori si arriva passando dal tunnel Cloudflare.
+      - "127.0.0.1:8088:80"
     volumes:
       - ./backend:/var/www/html:ro
+      # Frontend compilato con `npx ng build` (cartella frontend).
+      - ./frontend/dist/frontend/browser:/var/www/frontend:ro
       - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on: [app]
     networks: [marketing]
