@@ -57,13 +57,22 @@ Gemini ha un piano gratuito con un limite di richieste al minuto e al giorno. Su
 
 2. Riavvia app e worker: `docker compose up -d app worker`.
 
-Con `AI_PROVIDER=auto` si usa Claude se c'è `ANTHROPIC_API_KEY`, altrimenti Gemini se c'è `GEMINI_API_KEY`; per scegliere a mano usa `AI_PROVIDER=claude`, `gemini` o `fake`. `GEMINI_MODEL` (default `gemini-flash-latest`) sceglie il modello. Istruzioni e formati delle risposte sono gli stessi di Claude.
+Con `AI_PROVIDER=auto` si usa Claude se c'è `ANTHROPIC_API_KEY`, altrimenti Gemini se c'è `GEMINI_API_KEY`; per scegliere a mano usa `AI_PROVIDER=claude`, `gemini`, `groq` o `fake`. `GEMINI_MODEL` (default `gemini-flash-latest`) sceglie il modello. Istruzioni e formati delle risposte sono gli stessi di Claude.
+
+### Riserva, limiti giornalieri e cache
+
+Per restare nelle quote gratuite:
+
+- **Provider di riserva**: con `AI_FALLBACK_PROVIDER=groq` e una chiave `GROQ_API_KEY` (gratuita su https://console.groq.com/keys), quando Gemini ha finito la quota o è sovraccarico la stessa richiesta passa a Groq. `GROQ_MODEL` (default `openai/gpt-oss-120b`) deve supportare `json_schema` in modalità strict. Sul piano gratuito Groq ha pochi token al minuto: le richieste più lunghe (diagnosi del sito, calendari interi) possono non starci.
+- **Limiti giornalieri**: `AI_DAILY_LIMIT` (in totale, perché la quota è quella della chiave) e `AI_DAILY_LIMIT_PER_CLIENT`; `0` = nessun limite. Contano anche i lavori automatici (rianalisi dei concorrenti, riepiloghi delle regole Meta). Oltre il limite, i lavori chiesti da una persona si fermano mostrando il motivo, quelli automatici passano al giorno dopo. Il giorno è quello UTC.
+- **Cache**: le risposte restano salvate 30 giorni. I lavori automatici le riusano se le istruzioni sono identiche (per esempio il sito di un concorrente non è cambiato); quando una persona chiede di generare, l'AI scrive sempre un testo nuovo.
 
 ## Test
 
 ```bash
 docker compose exec app php tests/isolation.php
 docker compose exec app php tests/meta_rules_check.php
+docker compose exec app php tests/ai_usage_check.php
 ```
 
 I test vanno eseguiti con il generatore di esempio: se nel `.env` c'è una chiave AI, metti prima `AI_PROVIDER=fake` e riavvia con `docker compose up -d app worker` (poi rimetti `auto`), altrimenti il worker elabora i lavori del test con l'AI vera e consuma crediti o quota.

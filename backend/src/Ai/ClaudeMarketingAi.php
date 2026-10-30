@@ -10,6 +10,8 @@ use Anthropic\Core\Exceptions\RateLimitException;
 
 class ClaudeMarketingAi implements MarketingAi
 {
+    public const PROVIDER = 'claude';
+
     // I prompt di sistema non contengono dati variabili, così possono essere messi in cache tra le richieste.
     private const COPY_RULES = <<<'TXT'
         Regole di scrittura:
@@ -538,7 +540,31 @@ class ClaudeMarketingAi implements MarketingAi
             . 'Voci di menu: ' . implode(' | ', $site['menu']) . "\nTitoli delle pagine: " . implode(' | ', $site['headings']) . "\n\n{$pages}</sito>\n\n";
     }
 
+    /**
+     * Richiesta all'AI con limiti giornalieri e cache; se il provider è sovraccarico o ha finito la quota
+     * si riprova con quello di riserva (AI_FALLBACK_PROVIDER).
+     */
     protected function callJson(string $system, string $prompt, array $schema, ?string $effort = null, int $maxTokens = 16000): array
+    {
+        $key = AiUsage::key($system, $prompt, $schema);
+        $cached = AiUsage::cached($key);
+        if ($cached !== null) return $cached;
+        AiUsage::check();
+        $provider = $this;
+        try {
+            $result = $this->request($system, $prompt, $schema, $effort, $maxTokens);
+        } catch (ProviderUnavailableException $e) {
+            $provider = MarketingAis::fallback(static::PROVIDER) ?? throw $e;
+            error_log(static::PROVIDER . ' non disponibile, uso ' . $provider::PROVIDER . ': ' . $e->getMessage());
+            $result = $provider->request($system, $prompt, $schema, $effort, $maxTokens);
+        }
+        AiUsage::record($provider::PROVIDER);
+        AiUsage::remember($key, $result);
+        return $result;
+    }
+
+    /** La chiamata vera al provider; gli errori temporanei sono ProviderUnavailableException. */
+    protected function request(string $system, string $prompt, array $schema, ?string $effort, int $maxTokens): array
     {
         try {
             $message = $this->client->beta->messages->create(
@@ -557,15 +583,15 @@ class ClaudeMarketingAi implements MarketingAi
         } catch (AuthenticationException) {
             throw new GenerationException('Chiave API di Anthropic non valida.');
         } catch (RateLimitException) {
-            throw new GenerationException('Limite di richieste AI raggiunto. Riprova tra qualche minuto.');
+            throw new ProviderUnavailableException('Limite di richieste AI raggiunto. Riprova tra qualche minuto.');
         } catch (BadRequestException $e) {
             error_log('Claude bad request: ' . $e->getMessage());
             throw new GenerationException('Richiesta AI non valida. Controlla i log del worker.');
         } catch (APIStatusException $e) {
             error_log('Claude API error: ' . $e->getMessage());
-            throw new GenerationException('Il servizio AI non è disponibile al momento. Riprova più tardi.');
+            throw new ProviderUnavailableException('Il servizio AI non è disponibile al momento. Riprova più tardi.');
         } catch (APIConnectionException) {
-            throw new GenerationException('Impossibile contattare il servizio AI.');
+            throw new ProviderUnavailableException('Impossibile contattare il servizio AI.');
         }
 
         if ($message->stopReason === 'refusal') throw new GenerationException('L\'AI ha rifiutato questa richiesta. Riformula il brief.');

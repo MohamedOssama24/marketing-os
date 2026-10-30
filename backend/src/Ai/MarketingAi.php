@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /** Errore da mostrare all'utente così com'è (niente dettagli interni). */
-final class GenerationException extends RuntimeException {}
+class GenerationException extends RuntimeException {}
 
 interface MarketingAi
 {
@@ -96,15 +96,34 @@ interface MarketingAi
 
 final class MarketingAis
 {
-    /** AI_PROVIDER=claude|gemini|fake; se non indicato usa Claude o Gemini quando c'è la loro chiave API, altrimenti le bozze di esempio. */
+    /** AI_PROVIDER=claude|gemini|groq|fake; se non indicato usa Claude o Gemini quando c'è la loro chiave API, altrimenti le bozze di esempio. */
     public static function make(): MarketingAi
     {
         $provider = getenv('AI_PROVIDER') ?: 'auto';
         if ($provider === 'auto') $provider = getenv('ANTHROPIC_API_KEY') ? 'claude' : (getenv('GEMINI_API_KEY') ? 'gemini' : 'fake');
-        return match ($provider) {
+        return self::provider($provider) ?? new FakeMarketingAi();
+    }
+
+    /** Il provider di riserva (AI_FALLBACK_PROVIDER) quando quello principale è sovraccarico; null se non c'è o non è configurato. */
+    public static function fallback(string $current): ?ClaudeMarketingAi
+    {
+        $name = getenv('AI_FALLBACK_PROVIDER') ?: '';
+        if ($name === '' || $name === $current) return null;
+        try {
+            return self::provider($name);
+        } catch (GenerationException $e) {
+            error_log('Provider AI di riserva non utilizzabile: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private static function provider(string $name): ?ClaudeMarketingAi
+    {
+        return match ($name) {
             'claude' => new ClaudeMarketingAi(),
             'gemini' => new GeminiMarketingAi(),
-            default => new FakeMarketingAi(),
+            'groq' => new GroqMarketingAi(),
+            default => null,
         };
     }
 }

@@ -24,7 +24,7 @@ final class Jobs
     public static function claim(): ?array
     {
         $pdo = Database::connection();
-        $stmt = $pdo->prepare("UPDATE jobs SET status='running', started_at=UTC_TIMESTAMP(), attempts=attempts+1, id=LAST_INSERT_ID(id) WHERE status='queued' ORDER BY id LIMIT 1");
+        $stmt = $pdo->prepare("UPDATE jobs SET status='running', started_at=UTC_TIMESTAMP(), attempts=attempts+1, id=LAST_INSERT_ID(id) WHERE status='queued' AND (run_after IS NULL OR run_after <= UTC_TIMESTAMP()) ORDER BY id LIMIT 1");
         $stmt->execute();
         if ($stmt->rowCount() === 0) return null;
         $job = $pdo->query('SELECT * FROM jobs WHERE id=' . (int)$pdo->lastInsertId())->fetch();
@@ -36,6 +36,13 @@ final class Jobs
     {
         $stmt = Database::connection()->prepare("UPDATE jobs SET status='done', result=?, error=NULL, finished_at=UTC_TIMESTAMP() WHERE id=?");
         $stmt->execute([json_encode($result, JSON_UNESCAPED_UNICODE), $id]);
+    }
+
+    /** Rimette in coda il lavoro per domani (limite AI del giorno raggiunto), con il motivo visibile. */
+    public static function postpone(int $id, string $message): void
+    {
+        $stmt = Database::connection()->prepare("UPDATE jobs SET status='queued', error=?, run_after=UTC_DATE() + INTERVAL 1 DAY + INTERVAL 5 MINUTE WHERE id=?");
+        $stmt->execute([mb_substr($message, 0, 500), $id]);
     }
 
     public static function fail(int $id, string $message): void

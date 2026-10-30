@@ -90,9 +90,9 @@ final class CompetitorAdsController
     }
 
     /** Mette in coda la lettura delle inserzioni (anche dal worker e quando si aggiunge un concorrente). */
-    public static function enqueue(int $competitorId, array $user): array
+    public static function enqueue(int $competitorId, array $user, bool $automatic = false): array
     {
-        $job = Jobs::enqueue($user, 'competitor_ads', ['competitor_id' => $competitorId]);
+        $job = Jobs::enqueue($user, 'competitor_ads', ['competitor_id' => $competitorId] + ($automatic ? ['automatic' => true] : []));
         Database::connection()->prepare('UPDATE competitors SET ads_job_id=? WHERE id=? AND organization_id=?')->execute([$job['id'], $competitorId, $user['organization_id']]);
         return $job;
     }

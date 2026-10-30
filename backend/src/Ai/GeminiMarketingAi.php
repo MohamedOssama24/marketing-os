@@ -11,6 +11,8 @@ use GuzzleHttp\Exception\RequestException;
  */
 final class GeminiMarketingAi extends ClaudeMarketingAi
 {
+    public const PROVIDER = 'gemini';
+
     private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
     private const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 
@@ -25,7 +27,7 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
         $this->http = new HttpClient(['timeout' => 180,'connect_timeout' => 15]);
     }
 
-    protected function callJson(string $system, string $prompt, array $schema, ?string $effort = null, int $maxTokens = 16000): array
+    protected function request(string $system, string $prompt, array $schema, ?string $effort, int $maxTokens): array
     {
         $model = getenv('GEMINI_MODEL') ?: 'gemini-flash-latest';
         $body = [
@@ -51,7 +53,7 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
             } catch (ConnectException) {
                 // Anche una risposta che non arriva entro il tempo massimo è un sovraccarico momentaneo.
                 if ($i < count($attempts) - 1) continue;
-                throw new GenerationException('Impossibile contattare il servizio AI.');
+                throw new ProviderUnavailableException('Impossibile contattare il servizio AI.');
             } catch (RequestException $e) {
                 $status = $e->getResponse()?->getStatusCode() ?? 0;
                 if (in_array($status, [500, 503], true) && $i < count($attempts) - 1) continue;
@@ -82,8 +84,10 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
         $status = $e->getResponse()?->getStatusCode() ?? 0;
         $body = (string)$e->getResponse()?->getBody();
         error_log("Gemini API error {$status}: " . mb_substr($body, 0, 2000));
+        // Quota finita o servizio giù: si può passare al provider di riserva.
+        if ($status === 429) throw new ProviderUnavailableException('Limite di richieste di Gemini raggiunto (il piano gratuito ne permette poche al minuto e al giorno). Riprova più tardi.');
+        if ($status >= 500 || $status === 0) throw new ProviderUnavailableException('Il servizio AI non è disponibile al momento. Riprova più tardi.');
         throw new GenerationException(match (true) {
-            $status === 429 => 'Limite di richieste di Gemini raggiunto (il piano gratuito ne permette poche al minuto e al giorno). Riprova più tardi.',
             str_contains($body, 'API_KEY_INVALID') || $status === 401 || $status === 403 => 'Chiave API di Gemini non valida.',
             $status === 404 => "Il modello Gemini «{$model}» non esiste o non è disponibile: controlla GEMINI_MODEL.",
             $status === 400 => 'Richiesta AI non valida. Controlla i log del worker.',

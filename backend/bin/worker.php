@@ -20,6 +20,8 @@ function loadBrand(int $orgId, ?int $brandId): array
 {
     $brand = $brandId ? (Tenant::find('brand_profiles', $brandId, $orgId) ?? []) : [];
     if ($brand) $brand['style_examples'] = StyleMemory::forBrand($orgId, (int)$brand['id']);
+    // Le richieste AI che seguono contano nel limite giornaliero di questo cliente.
+    AiUsage::forBrand($brand ? (int)$brand['id'] : null);
     return $brand;
 }
 
@@ -54,6 +56,7 @@ $handlers = [
         } catch (SiteException $e) {
             throw new GenerationException($e->getMessage());
         }
+        AiUsage::forBrand($existing ? (int)$existing['id'] : null);
         $kit = MarketingAis::make()->brandKitFromSite($site);
 
         $fields = ['name' => 160, 'summary' => 500, 'industry' => 160, 'audience' => 2000, 'tone_of_voice' => 2000, 'products' => 5000, 'keywords' => 1000, 'words_to_avoid' => 1000, 'brand_guidelines' => 5000];
@@ -532,7 +535,7 @@ function refreshCompetitors(): void
         WHERE c.last_checked_at < ? AND c.created_by IS NOT NULL AND (j.id IS NULL OR j.status IN ('done','failed')) LIMIT 20");
     $stale->execute([date('Y-m-d H:i:s', strtotime('-7 days'))]);
     foreach ($stale->fetchAll() as $c) {
-        $job = Jobs::enqueue(['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']], 'analyze_competitor', ['competitor_id' => (int)$c['id']]);
+        $job = Jobs::enqueue(['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']], 'analyze_competitor', ['competitor_id' => (int)$c['id'], 'automatic' => true]);
         $pdo->prepare('UPDATE competitors SET job_id=? WHERE id=?')->execute([$job['id'], $c['id']]);
     }
 }
@@ -546,7 +549,7 @@ function refreshCompetitorAds(): void
         WHERE (c.ads_checked_at IS NULL OR c.ads_checked_at < ?) AND c.created_by IS NOT NULL AND (j.id IS NULL OR j.status IN ('done','failed')) LIMIT 20");
     $stale->execute([date('Y-m-d H:i:s', strtotime('-24 hours'))]);
     foreach ($stale->fetchAll() as $c) {
-        CompetitorAdsController::enqueue((int)$c['id'], ['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']]);
+        CompetitorAdsController::enqueue((int)$c['id'], ['organization_id' => (int)$c['organization_id'], 'id' => (int)$c['created_by']], true);
     }
 }
 
@@ -573,6 +576,7 @@ while (true) {
         }
         // Le pagine con le regole di Meta si ricontrollano una volta al giorno (solo quelle scadute).
         try {
+            AiUsage::forJob(null, true);
             MetaPolicyMonitor::refresh();
         } catch (Throwable $e) {
             error_log((string)$e);
@@ -582,10 +586,22 @@ while (true) {
     $job = Jobs::claim();
     if (!$job) { sleep(2); continue; }
     echo "Lavoro #{$job['id']} ({$job['type']})...\n";
+    // I lavori partiti da soli (rianalisi settimanali e giornaliere) possono usare le risposte AI salvate.
+    $automatic = !empty($job['payload']['automatic']);
+    AiUsage::forJob((int)$job['organization_id'], $automatic);
     try {
         $handler = $handlers[$job['type']] ?? throw new GenerationException("Tipo di lavoro sconosciuto: {$job['type']}");
         Jobs::finish((int)$job['id'], $handler($job));
         echo "Lavoro #{$job['id']} completato.\n";
+    } catch (AiQuotaException $e) {
+        // Limite del giorno raggiunto: i lavori automatici aspettano domani, quelli chiesti da una persona mostrano il motivo.
+        if ($automatic) {
+            Jobs::postpone((int)$job['id'], $e->getMessage());
+            echo "Lavoro #{$job['id']} rimandato a domani: {$e->getMessage()}\n";
+        } else {
+            Jobs::fail((int)$job['id'], $e->getMessage());
+            echo "Lavoro #{$job['id']} fallito: {$e->getMessage()}\n";
+        }
     } catch (GenerationException $e) {
         Jobs::fail((int)$job['id'], $e->getMessage());
         echo "Lavoro #{$job['id']} fallito: {$e->getMessage()}\n";
