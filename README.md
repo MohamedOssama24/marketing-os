@@ -20,6 +20,7 @@ Piattaforma per gestire il marketing dei clienti: API PHP 8.3, MySQL 8.4, Nginx 
 - **Ore e redditività**: timer e ore per cliente, costo orario dell'agenzia, margine e guadagno orario reale di ogni cliente.
 - **Recensioni**: l'AI propone tre risposte nel tono del cliente a recensioni di Google, Facebook, TripAdvisor.
 - **Concorrenti**: fino a 5 per cliente, rianalizzati ogni settimana, con spunti per distinguersi e il link alle loro inserzioni attive. Per ognuno, cosa fa bene e come fare meglio, con un clic per far scrivere all'AI il post del cliente.
+- **Sponsorizzate pubblicate da qui**: collegato Facebook, la sponsorizzata si pubblica su Facebook e Instagram senza aprire Gestione inserzioni, si attiva con la conferma del budget e spesa e risultati arrivano da soli in Sponsorizzate e in fattura (vedi sotto).
 - **Inserzioni dei concorrenti**: dall'archivio inserzioni di Meta, cosa sponsorizzano, a chi (età, sesso, paesi), in quali città e zone, da quanto tempo (quelle attive da più di 30 giorni probabilmente funzionano), offerte e pagine di destinazione. La spesa è una stima (Meta non la pubblica), messa accanto alla spesa reale del cliente. Avviso quando un concorrente lancia nuove inserzioni, con il riepilogo dell'AI e una sponsorizzata del cliente pronta per la procedura guidata. Richiede `META_AD_LIBRARY_TOKEN`; con `META_AD_LIBRARY_SAMPLE=true` mostra dati di esempio.
 - **Confronto e proposta di stile**: il sito del cliente accanto a quelli dei concorrenti (punteggio, colori, caratteri, controlli), dove vince e dove perde, e uno stile che lo distingue (colori, carattere, foto, tono, formati) con l'anteprima prima/dopo; si applica al brand kit con un clic e si può annullare.
 - **Ricorrenze e avvisi**: festività e date commerciali nel calendario; avvisi su approvazioni ferme, budget superati, settimane senza post, report non aperti, fatture scadute.
@@ -67,13 +68,35 @@ Per restare nelle quote gratuite:
 - **Limiti giornalieri**: `AI_DAILY_LIMIT` (in totale, perché la quota è quella della chiave) e `AI_DAILY_LIMIT_PER_CLIENT`; `0` = nessun limite. Contano anche i lavori automatici (rianalisi dei concorrenti, riepiloghi delle regole Meta). Oltre il limite, i lavori chiesti da una persona si fermano mostrando il motivo, quelli automatici passano al giorno dopo. Il giorno è quello UTC.
 - **Cache**: le risposte restano salvate 30 giorni. I lavori automatici le riusano se le istruzioni sono identiche (per esempio il sito di un concorrente non è cambiato); quando una persona chiede di generare, l'AI scrive sempre un testo nuovo.
 
+## Sponsorizzate pubblicate direttamente su Meta
+
+Con il cliente collegato a Meta, la sponsorizzata preparata con la procedura guidata si pubblica da Marketing OS su Facebook e Instagram:
+
+1. Nella scheda del cliente, **Sponsorizzate su Meta → Collega Facebook e Instagram**: chi gestisce l'account pubblicitario accede a Facebook e sceglie account pubblicitario e pagina (l'Instagram collegato alla pagina viene preso da solo). Il codice di accesso resta cifrato sul server (con `APP_KEY`) e non arriva mai al browser.
+2. Nella sponsorizzata, **Pubblica su Meta in pausa**: il worker crea campagna, gruppo di inserzioni, immagine, creatività e inserzione, tutto in pausa. Se un passaggio fallisce, riprovando si riparte da lì senza doppioni.
+3. **Attiva su Meta**: solo titolare o amministratore, confermando budget e date. Budget e data di fine si possono cambiare anche dopo; testi, pubblico e immagine no (si crea una nuova sponsorizzata).
+4. Ogni ora il worker rilegge stato (revisione, rifiuto con il motivo) e risultati; la spesa arriva in Sponsorizzate e nelle fatture, una riga per mese.
+
+Si pubblicano da qui gli obiettivi Notorietà, Traffico e Interazione; Contatti, Vendite e Promozione dell'app richiedono modulo, Pixel o app configurati su Meta e restano con la scheda per Gestione inserzioni. `META_ADS_MAX_DAILY_BUDGET` (default 100 €) è il tetto al budget giornaliero.
+
+Per collegare Meta davvero:
+
+1. Su https://developers.facebook.com crea un'app di tipo **Business**, con i prodotti **Marketing API** e **Facebook Login for Business**.
+2. Tra gli URI di reindirizzamento OAuth validi aggiungi `APP_URL/api/v1/meta/callback` (serve un indirizzo HTTPS raggiungibile da Facebook).
+3. Metti in `.env` `META_APP_ID` e `META_APP_SECRET` e riavvia con `docker compose up -d app worker`.
+
+Finché l'app è in modalità sviluppo funziona solo per chi ha un ruolo nell'app (tu e i tuoi account pubblicitari): basta per provare. Per i clienti esterni servono la verifica dell'azienda e la revisione dell'app da parte di Meta per i permessi `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads` e `instagram_basic`. Con `META_ADS_SAMPLE=true` (e senza `META_APP_ID`) collegamento, pubblicazione e risultati usano dati di esempio, segnalati come tali.
+
 ## Test
 
 ```bash
 docker compose exec app php tests/isolation.php
 docker compose exec app php tests/meta_rules_check.php
 docker compose exec app php tests/ai_usage_check.php
+docker compose exec app php tests/meta_marketing_check.php
 ```
+
+`meta_marketing_check.php` richiede `META_ADS_SAMPLE=true` senza `META_APP_ID`.
 
 I test vanno eseguiti con il generatore di esempio: se nel `.env` c'è una chiave AI, metti prima `AI_PROVIDER=fake` e riavvia con `docker compose up -d app worker` (poi rimetti `auto`), altrimenti il worker elabora i lavori del test con l'AI vera e consuma crediti o quota.
 

@@ -429,6 +429,39 @@ $handlers = [
         return ['ad_plan_id' => $plan['id'], 'verdict' => $clean['verdict']];
     },
 
+    /** Pubblica la sponsorizzata sull'account pubblicitario del cliente, tutta in pausa: si attiva poi con una conferma. */
+    'meta_publish' => function (array $job): array {
+        $orgId = (int)$job['organization_id'];
+        $planId = (int)$job['payload']['ad_plan_id'];
+        Tenant::find('ad_plans', $planId, $orgId, 'id') ?? throw new GenerationException('La sponsorizzata non esiste più.');
+        $plan = AdPlanController::find($planId, $orgId);
+        $connection = MetaMarketing::connection($orgId, $plan['brand_profile_id']);
+        $image = AdPlanController::imagePath($plan, $orgId);
+        $pdo = Database::connection();
+        $fail = fn() => $pdo->prepare("UPDATE ad_plans SET meta_status='error' WHERE id=? AND organization_id=?")->execute([$planId, $orgId]);
+        $problems = MetaMarketing::problems($plan, $connection, $image);
+        if ($problems) {
+            $fail();
+            throw new GenerationException($problems[0]);
+        }
+        $brand = Tenant::find('brand_profiles', $plan['brand_profile_id'], $orgId, 'id, name');
+        $pdo->prepare('UPDATE ad_plans SET meta_sample=? WHERE id=? AND organization_id=?')->execute([$connection['sample'] ? 1 : 0, $planId, $orgId]);
+        $save = function (array $ids) use ($pdo, $planId, $orgId): void {
+            $set = implode(', ', array_map(fn($c) => "{$c}=?", array_keys($ids)));
+            $pdo->prepare("UPDATE ad_plans SET {$set} WHERE id=? AND organization_id=?")->execute([...array_values($ids), $planId, $orgId]);
+        };
+        try {
+            MetaMarketing::publish($plan, $connection, $brand, $image, AdPlanController::payer($orgId, (int)$brand['id']), $save);
+        } catch (MetaApiException $e) {
+            if ($e->expired()) MetaConnectionController::markError($connection, $e);
+            $fail();
+            throw $e;
+        }
+        $pdo->prepare("UPDATE ad_plans SET meta_status='paused', published_at=?, status=IF(status='draft', 'ready', status) WHERE id=? AND organization_id=?")
+            ->execute([date('Y-m-d H:i:s'), $planId, $orgId]);
+        return ['ad_plan_id' => $planId];
+    },
+
     /** Controllo immediato delle pagine delle regole di Meta, chiesto dall'agenzia. */
     'check_meta_policies' => fn(array $job): array => ['changed' => MetaPolicyMonitor::refresh(true)],
 
@@ -553,6 +586,29 @@ function refreshCompetitorAds(): void
     }
 }
 
+/**
+ * Ogni ora rilegge da Meta stato e risultati delle sponsorizzate pubblicate da qui (al massimo ogni 6 ore ciascuna),
+ * fino a qualche giorno dopo la fine: la spesa arriva in Sponsorizzate e in fattura senza inserirla a mano.
+ */
+function refreshMetaAds(): void
+{
+    if (MetaMarketing::mode() === null) return;
+    $pdo = Database::connection();
+    $stmt = $pdo->prepare("SELECT id, organization_id, brand_profile_id FROM ad_plans WHERE meta_ad_id IS NOT NULL AND activated_at IS NOT NULL
+        AND (meta_synced_at IS NULL OR meta_synced_at < ?) AND (end_date IS NULL OR end_date >= ?) ORDER BY meta_synced_at LIMIT 50");
+    $stmt->execute([date('Y-m-d H:i:s', strtotime('-6 hours')), date('Y-m-d', strtotime('-3 days'))]);
+    foreach ($stmt->fetchAll() as $row) {
+        $orgId = (int)$row['organization_id'];
+        $connection = MetaMarketing::connection($orgId, (int)$row['brand_profile_id']);
+        if (!$connection || $connection['status'] === 'expired') continue;
+        try {
+            AdPlanController::saveSync(AdPlanController::find((int)$row['id'], $orgId), $connection, $orgId);
+        } catch (MetaApiException $e) {
+            MetaConnectionController::markError($connection, $e);
+        }
+    }
+}
+
 /** Unisce testo, invito all'azione, hashtag e note per il revisore in un unico corpo modificabile. */
 function formatBody(array $variant): string
 {
@@ -571,6 +627,7 @@ while (true) {
         try {
             refreshCompetitors();
             refreshCompetitorAds();
+            refreshMetaAds();
         } catch (Throwable $e) {
             error_log((string)$e);
         }

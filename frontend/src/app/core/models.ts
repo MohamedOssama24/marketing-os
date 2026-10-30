@@ -961,6 +961,8 @@ export interface AdPlanInput {
   cta: string;
   url: string;
   music: AdMusic;
+  /** Immagine dell'inserzione pubblicata da qui; vuota = la foto del post sponsorizzato. */
+  image_asset_id?: number | null;
 }
 
 export interface AdReview {
@@ -985,6 +987,8 @@ export interface AdPlan extends Omit<AdPlanInput, 'brand_id' | 'content_id' | 'u
   review_status: 'queued' | 'running' | 'done' | 'failed' | null;
   review_error: string | null;
   status: AdPlanStatus;
+  image_asset_id: number | null;
+  meta: AdPlanMeta;
   ads_manager_url: string;
   created_at: string;
   updated_at: string;
@@ -1052,4 +1056,45 @@ export interface AdDraft {
   brand_id: number;
   primary_text: string;
   headline: string;
+}
+
+/** Collegamento diretto del cliente a Meta: il codice di accesso resta sul server. */
+export interface MetaConnection {
+  mode: 'meta' | 'sample' | null;
+  connected: boolean;
+  sample: boolean;
+  user_name: string | null;
+  expires_at: string | null;
+  expired: boolean;
+  error: string | null;
+  ad_account: { id: string; name: string; currency: string | null } | null;
+  page: { id: string; name: string } | null;
+  instagram: { id: string; username: string | null } | null;
+  ready: boolean;
+  max_daily_budget: number;
+  connected_at: string | null;
+}
+
+export interface MetaAssets {
+  ad_accounts: { id: string; name: string; currency: string; active: boolean; business: string | null }[];
+  pages: { id: string; name: string; instagram_id: string | null; instagram_username: string | null }[];
+}
+
+/** La sponsorizzata su Meta: ID creati, stato della revisione e della consegna, risultati letti da Meta. */
+export interface AdPlanMeta {
+  published: boolean;
+  sample: boolean;
+  campaign_id: string | null;
+  adset_id: string | null;
+  image_hash: string | null;
+  creative_id: string | null;
+  ad_id: string | null;
+  status: string | null;
+  feedback: string[];
+  job_status: 'queued' | 'running' | 'done' | 'failed' | null;
+  error: string | null;
+  published_at: string | null;
+  activated_at: string | null;
+  synced_at: string | null;
+  results: { spent: number; impressions: number; reach: number; clicks: number; results: number } | null;
 }

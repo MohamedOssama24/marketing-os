@@ -111,6 +111,17 @@ $router->add('GET', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'show']);
 $router->add('PATCH', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'update']);
 $router->add('DELETE', '/api/v1/ad-plans/{id}', [AdPlanController::class, 'destroy']);
 $router->add('POST', '/api/v1/ad-plans/{id}/review', [AdPlanController::class, 'review']);
+$router->add('POST', '/api/v1/ad-plans/{id}/publish', [AdPlanController::class, 'publish']);
+$router->add('POST', '/api/v1/ad-plans/{id}/activate', [AdPlanController::class, 'activate']);
+$router->add('POST', '/api/v1/ad-plans/{id}/pause', [AdPlanController::class, 'pause']);
+$router->add('POST', '/api/v1/ad-plans/{id}/meta-sync', [AdPlanController::class, 'syncMeta']);
+// Collegamento a Meta del cliente; Facebook rimanda il browser a /meta/callback dopo l'accesso.
+$router->add('GET', '/api/v1/meta/callback', [MetaConnectionController::class, 'callback']);
+$router->add('GET', '/api/v1/brands/{brandId}/meta', [MetaConnectionController::class, 'show']);
+$router->add('PATCH', '/api/v1/brands/{brandId}/meta', [MetaConnectionController::class, 'update']);
+$router->add('DELETE', '/api/v1/brands/{brandId}/meta', [MetaConnectionController::class, 'destroy']);
+$router->add('POST', '/api/v1/brands/{brandId}/meta/connect', [MetaConnectionController::class, 'connect']);
+$router->add('GET', '/api/v1/brands/{brandId}/meta/assets', [MetaConnectionController::class, 'assets']);
 
 $router->add('GET', '/api/v1/billing/clients', [BillingController::class, 'clients']);
 $router->add('PATCH', '/api/v1/billing/clients/{brandId}', [BillingController::class, 'updateClient']);

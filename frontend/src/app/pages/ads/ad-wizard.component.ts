@@ -1,12 +1,12 @@
 import { Component, EventEmitter, Input, OnDestroy, OnInit, Output, computed, inject, signal } from '@angular/core';
 import { LOCALE } from '../../i18n/i18n';
-import { CurrencyPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
+import { CurrencyPipe, DatePipe, DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, Subscription, debounceTime, map, switchMap, timer, takeWhile } from 'rxjs';
+import { Observable, Subject, Subscription, debounceTime, map, switchMap, timer, takeWhile } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import {
-  AdCheck, AdDraft, AdIssue, AdMusic, AdMusicSource, AdObjective, AdPlan, AdPlanInput, AdVerdict, Asset, Brand, ContentItem, MetaRulebook, RuleSeverity, apiErrorMessage,
+  AdCheck, AdDraft, AdIssue, AdMusic, AdMusicSource, AdObjective, AdPlan, AdPlanInput, AdVerdict, Asset, Brand, ContentItem, MetaConnection, MetaRulebook, RuleSeverity, apiErrorMessage,
 } from '../../core/models';
 import { AssetPreviewComponent } from '../../shared/asset-preview.component';
 import { PostVisualComponent } from '../../shared/post-visual.component';
@@ -16,6 +16,25 @@ const STEPS = ['Obiettivo', 'Pubblico', 'Budget', 'Testi', 'Musica', 'Pronta per
 /** Indici dei passaggi usati nella logica. */
 const TEXTS = 3, MUSIC = 4, READY = 5;
 const NO_MUSIC_CHOICE: AdMusic = { source: 'meta', mood: null, meta_picks: true, asset_id: null, track_name: null, rights_confirmed: false };
+/** Obiettivi che si pubblicano da qui; gli altri chiedono modulo contatti, Pixel o app configurati in Gestione inserzioni. */
+const DIRECT_OBJECTIVES = ['awareness', 'traffic', 'engagement'];
+/** Stato della sponsorizzata su Meta (effective_status), in parole. */
+const META_STATUS: Record<string, { label: string; badge: string }> = {
+  publishing: { label: 'In pubblicazione…', badge: 'in_review' },
+  paused: { label: 'Su Meta, in pausa', badge: 'draft' },
+  campaign_paused: { label: 'In pausa', badge: 'draft' },
+  adset_paused: { label: 'In pausa', badge: 'draft' },
+  in_process: { label: 'In attivazione', badge: 'in_review' },
+  pending_review: { label: 'In revisione da Meta', badge: 'in_review' },
+  active: { label: 'Attiva', badge: 'approved' },
+  with_issues: { label: 'Attiva con problemi', badge: 'in_review' },
+  disapproved: { label: 'Rifiutata da Meta', badge: 'rejected' },
+  pending_billing_info: { label: 'Manca il metodo di pagamento', badge: 'rejected' },
+  completed: { label: 'Terminata', badge: 'scheduled' },
+  archived: { label: 'Archiviata', badge: 'scheduled' },
+  deleted: { label: 'Eliminata su Meta', badge: 'rejected' },
+  error: { label: 'Pubblicazione non riuscita', badge: 'rejected' },
+};
 const SEVERITY: Record<RuleSeverity, { icon: string; label: string }> = {
   block: { icon: 'ti-circle-x', label: 'Da correggere' },
   warn: { icon: 'ti-alert-triangle', label: 'Attenzione' },
@@ -38,7 +57,7 @@ function isoDate(d: Date): string {
 @Component({
   selector: 'app-ad-wizard',
   standalone: true,
-  imports: [AssetPreviewComponent, CurrencyPipe, DatePipe, FormsModule, NgTemplateOutlet, PostVisualComponent],
+  imports: [AssetPreviewComponent, CurrencyPipe, DatePipe, DecimalPipe, FormsModule, NgTemplateOutlet, PostVisualComponent],
   template: `
     <div class="modal-backdrop" (click)="closed.emit()">
       <div class="modal ad-wizard" (click)="$event.stopPropagation()" role="dialog" aria-label="Sponsorizzata su Meta">
@@ -269,6 +288,119 @@ function isoDate(d: Date): string {
                 @if (saved(); as p) {
                   <div class="wizard-grid">
                     <div class="wizard-main">
+                      @if (metaPanel()) {
+                        <section class="meta-publish" aria-live="polite">
+                          <h3><i class="ti ti-brand-meta" aria-hidden="true"></i> {{ p.meta.published ? 'Su Meta' : 'Pubblica su Facebook e Instagram' }}
+                            @if (p.meta.sample) { <span class="tag">Esempio</span> }</h3>
+                          @if (meta(); as m) {
+                            <div class="meta-where">
+                              <span><i class="ti ti-credit-card" aria-hidden="true"></i>{{ m.ad_account?.name }}</span>
+                              <span><i class="ti ti-brand-facebook" aria-hidden="true"></i>{{ m.page?.name }}</span>
+                              @if (m.instagram) { <span><i class="ti ti-brand-instagram" aria-hidden="true"></i>&#64;{{ m.instagram.username }}</span> }
+                            </div>
+                          }
+
+                          @if (!p.meta.ad_id) {
+                            @if (p.meta.job_status === 'queued' || p.meta.job_status === 'running') {
+                              <div class="rewrite-progress"><span class="spinner"></span> Creo campagna, gruppo di inserzioni e inserzione su Meta…</div>
+                            } @else {
+                              @if (!directObjective()) {
+                                <p class="hint small"><i class="ti ti-info-circle" aria-hidden="true"></i> L'obiettivo «{{ objective()?.label }}» richiede modulo contatti, Pixel o app configurati su Meta:
+                                  per ora pubblicala con la scheda qui sotto, oppure scegli Notorietà, Traffico o Interazione.</p>
+                              } @else {
+                                <span class="field-label">Immagine dell'inserzione</span>
+                                @if (photos().length) {
+                                  <div class="image-pick" role="radiogroup" aria-label="Immagine dell'inserzione">
+                                    @for (a of photos(); track a.id) {
+                                      <button type="button" role="radio" [class.on]="imageId() === a.id" [attr.aria-checked]="imageId() === a.id" (click)="setImage(a.id)"
+                                        [disabled]="busy() || !auth.canEdit()" [title]="a.original_name">
+                                        <app-asset-preview [assetId]="a.id" kind="image" />
+                                      </button>
+                                    }
+                                  </div>
+                                  <p class="muted small">Formato consigliato 1080 × 1080 o 1080 × 1350 px. Si carica la foto senza i testi della grafica: titolo e testo li aggiunge Meta.</p>
+                                } @else {
+                                  <p class="muted small">Carica le foto del cliente nella libreria per sceglierne una.</p>
+                                }
+                                @if (p.meta.error) { <div class="alert small">{{ p.meta.error }}</div> }
+                                @if (auth.canEdit()) {
+                                  <button type="button" class="btn primary" (click)="publish()" [disabled]="busy() || !imageId()">
+                                    <i class="ti ti-upload" aria-hidden="true"></i> {{ p.meta.campaign_id ? 'Riprova la pubblicazione' : 'Pubblica su Meta in pausa' }}</button>
+                                  <p class="muted small">Si crea tutto in pausa: non si spende nulla finché non premi «Attiva».</p>
+                                }
+                              }
+                            }
+                          } @else {
+                            <div class="meta-state">
+                              <span class="badge" [attr.data-status]="metaStatus(p.meta.status).badge">{{ metaStatus(p.meta.status).label }}</span>
+                              @if (p.meta.synced_at) { <small class="muted">aggiornato {{ p.meta.synced_at | date: 'd MMM HH:mm' }}</small> }
+                              <button type="button" class="link-btn small" (click)="syncMeta()" [disabled]="busy()"><i class="ti ti-refresh" aria-hidden="true"></i> Aggiorna</button>
+                              <a class="link-btn small" [href]="p.ads_manager_url" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Vedi su Meta</a>
+                            </div>
+                            @for (f of p.meta.feedback; track $index) {
+                              <div class="rule-issue" data-severity="block"><i class="ti ti-circle-x" aria-hidden="true"></i><div><p>{{ f }}</p></div></div>
+                            }
+                            @if (p.meta.results; as r) {
+                              <div class="meta-results">
+                                <div><span>Speso</span><strong>{{ r.spent | currency: 'EUR' }}</strong></div>
+                                <div><span>Visualizzazioni</span><strong>{{ r.impressions | number }}</strong></div>
+                                <div><span>Persone raggiunte</span><strong>{{ r.reach | number }}</strong></div>
+                                <div><span>Clic sul link</span><strong>{{ r.clicks | number }}</strong></div>
+                                <div><span>Costo per clic</span><strong>{{ r.clicks ? (r.spent / r.clicks | currency: 'EUR') : '—' }}</strong></div>
+                              </div>
+                              <p class="muted small">La spesa compare in Sponsorizzate e nelle fatture del cliente, aggiornata da Meta ogni 6 ore.</p>
+                            } @else if (p.meta.activated_at) {
+                              <p class="muted small">I primi risultati arrivano qualche ora dopo l'attivazione.</p>
+                            }
+
+                            @if (auth.canEdit() && p.status !== 'ended') {
+                              <div class="budget-edit">
+                                <label>Budget giornaliero (€)
+                                  <input type="number" min="1" step="0.5" [max]="meta()?.max_daily_budget ?? 100" [ngModel]="newBudget()" (ngModelChange)="newBudget.set($event)" />
+                                </label>
+                                @if (newBudget() !== p.daily_budget) {
+                                  <button type="button" class="btn ghost small" (click)="changeBudget()" [disabled]="busy() || !newBudget()">Aggiorna su Meta</button>
+                                }
+                              </div>
+                            }
+
+                            @if (confirming()) {
+                              <div class="activate-confirm" role="alertdialog" aria-label="Conferma attivazione">
+                                <p><strong>Stai per attivare la sponsorizzata.</strong> Meta spenderà fino a <strong>{{ p.daily_budget | currency: 'EUR' }} al giorno</strong>
+                                  dall'account «{{ meta()?.ad_account?.name }}»@if (p.end_date) {, fino al {{ p.end_date | date: 'd MMMM' }} (massimo {{ maxSpend() | currency: 'EUR' }})} @else {, senza data di fine}.
+                                  Prima di andare in onda Meta la controlla: di solito entro 24 ore.</p>
+                                <label class="toggle-row"><input type="checkbox" [ngModel]="confirmChecked()" (ngModelChange)="confirmChecked.set($event)" />
+                                  <span>Confermo budget e date: il cliente è d'accordo.</span></label>
+                                <div class="actions start">
+                                  <button type="button" class="btn success" (click)="activate()" [disabled]="busy() || !confirmChecked()"><i class="ti ti-rocket" aria-hidden="true"></i> Attiva ora</button>
+                                  <button type="button" class="btn ghost" (click)="confirming.set(false)">Annulla</button>
+                                </div>
+                              </div>
+                            }
+                            @if (!auth.canManage() && isPaused()) {
+                              <p class="muted small"><i class="ti ti-lock" aria-hidden="true"></i> L'attivazione spende soldi veri: la può fare solo il titolare o un amministratore.</p>
+                            }
+                          }
+                        </section>
+                      } @else if (meta()?.mode) {
+                        <section class="meta-publish">
+                          <h3><i class="ti ti-brand-meta" aria-hidden="true"></i> Pubblica su Facebook e Instagram</h3>
+                          <p class="hint small"><i class="ti ti-plug-connected-x" aria-hidden="true"></i>
+                            @if (!meta()!.connected) {
+                              Questo cliente non è ancora collegato a Facebook, quindi da qui la sponsorizzata non arriva su Meta.
+                            } @else if (meta()!.expired || meta()!.error) {
+                              Il collegamento a Facebook di questo cliente è scaduto o non funziona più.
+                            } @else {
+                              Il cliente è collegato a Facebook, ma mancano l'account pubblicitario o la pagina.
+                            }
+                          </p>
+                          <p class="muted small">Apri la scheda del cliente, nel riquadro Meta premi «Collega Facebook e Instagram» e scegli account pubblicitario e pagina.
+                            Poi torna qui: comparirà «Pubblica su Meta in pausa». «Segna come terminata» non pubblica nulla su Meta.</p>
+                        </section>
+                      }
+
+                      <details class="sheet-toggle" [open]="!direct()">
+                      <summary>{{ direct() ? 'Preferisci farlo a mano? Scheda per Gestione inserzioni' : 'Scheda per Gestione inserzioni' }}</summary>
                       <div class="sheet">
                         <div class="strategy-head"><h3>Scheda per Gestione inserzioni</h3>
                           <a class="btn primary small" [href]="p.ads_manager_url" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Apri Gestione inserzioni</a></div>
@@ -291,6 +423,7 @@ function isoDate(d: Date): string {
                         }
                         <p class="muted small">Il link ha i parametri UTM: in Analytics vedi le visite arrivate da questa sponsorizzata.</p>
                       </div>
+                      </details>
                     </div>
                     <aside class="wizard-side">
                       @if (p.review_status === 'queued' || p.review_status === 'running') {
@@ -355,7 +488,13 @@ function isoDate(d: Date): string {
             <button type="button" class="btn primary" (click)="goTo(step() + 1)" [disabled]="!canGoTo(step() + 1)">Avanti</button>
           } @else if (step() === MUSIC && auth.canEdit()) {
             <button type="button" class="btn primary" (click)="save()" [disabled]="busy() || videoBusy()"><i class="ti ti-check" aria-hidden="true"></i> {{ saved() ? 'Salva le modifiche' : 'Salva e prepara la scheda' }}</button>
-          } @else if (step() === READY && auth.canEdit()) {
+          } @else if (step() === READY && saved()?.meta?.ad_id) {
+            @if (isPaused() && auth.canManage() && saved()?.status !== 'ended' && !confirming()) {
+              <button type="button" class="btn success" (click)="startActivation()" [disabled]="busy()"><i class="ti ti-rocket" aria-hidden="true"></i> Attiva su Meta</button>
+            } @else if (isRunning() && auth.canEdit()) {
+              <button type="button" class="btn ghost" (click)="pause()" [disabled]="busy()"><i class="ti ti-player-pause" aria-hidden="true"></i> Metti in pausa</button>
+            }
+          } @else if (step() === READY && auth.canEdit() && !direct()) {
             @if (saved()?.status === 'live') {
               <button type="button" class="btn ghost" (click)="setStatus('ended')" [disabled]="busy()">Segna come terminata</button>
             } @else if (saved()?.status !== 'ended') {
@@ -431,6 +570,28 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   tracks = signal<Asset[]>([]);
   uploadingMusic = signal(false);
   videoBusy = signal(false);
+  /** Collegamento del cliente a Meta e foto tra cui scegliere l'immagine dell'inserzione. */
+  meta = signal<MetaConnection | null>(null);
+  photos = signal<Asset[]>([]);
+  confirming = signal(false);
+  confirmChecked = signal(false);
+  newBudget = signal<number | null>(null);
+
+  /** Pannello di Meta: cliente collegato e pronto, oppure sponsorizzata già pubblicata da qui. */
+  metaPanel = computed(() => !!this.saved()?.meta?.published || !!this.meta()?.ready);
+  directObjective = computed(() => (this.version(), DIRECT_OBJECTIVES.includes(this.saved()?.objective ?? this.ad.objective)));
+  /** Si pubblica da qui: la scheda da copiare resta chiusa, come alternativa. */
+  direct = computed(() => !!this.saved()?.meta?.published || (!!this.meta()?.ready && this.directObjective()));
+  /** L'immagine scelta, altrimenti la foto del post sponsorizzato. */
+  imageId = computed(() => this.saved()?.image_asset_id ?? this.content()?.visual?.asset_id ?? null);
+  isPaused = computed(() => ['paused', 'campaign_paused', 'adset_paused'].includes(this.saved()?.meta?.status ?? ''));
+  isRunning = computed(() => ['active', 'in_process', 'pending_review', 'with_issues'].includes(this.saved()?.meta?.status ?? ''));
+  maxSpend = computed(() => {
+    const p = this.saved();
+    if (!p?.end_date) return null;
+    const days = Math.round((new Date(p.end_date).getTime() - new Date(Math.max(Date.now(), new Date(p.start_date).getTime())).getTime()) / 86400000) + 1;
+    return Math.max(days, 1) * p.daily_budget;
+  });
   /** Cambia a ogni modifica, per ricalcolare anteprima e riepiloghi che leggono il modulo. */
   private version = signal(0);
 
@@ -710,6 +871,56 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     });
   }
 
+  metaStatus(status: string | null): { label: string; badge: string } {
+    return META_STATUS[status ?? ''] ?? { label: status ?? 'Sconosciuto', badge: 'draft' };
+  }
+
+  setImage(assetId: number): void {
+    const p = this.saved();
+    if (!p || p.image_asset_id === assetId) return;
+    this.busy.set(true);
+    this.error.set(null);
+    this.api.updateAdPlan(p.id, { ...this.ad, image_asset_id: assetId }).subscribe({
+      next: (plan) => { this.saved.set(plan); this.busy.set(false); this.changedPlan.emit(plan); },
+      error: (e) => { this.error.set(apiErrorMessage(e)); this.busy.set(false); },
+    });
+  }
+
+  /** Crea la sponsorizzata su Meta in pausa (lo fa il worker) e aspetta che sia pronta. */
+  publish(): void {
+    const p = this.saved();
+    if (!p) return;
+    this.planCall(this.api.publishAdPlan(p.id), (plan) => this.pollMeta(plan.id));
+  }
+
+  startActivation(): void {
+    this.confirmChecked.set(false);
+    this.confirming.set(true);
+  }
+
+  activate(): void {
+    const p = this.saved();
+    if (!p) return;
+    this.planCall(this.api.activateAdPlan(p.id, p.daily_budget), () => this.confirming.set(false));
+  }
+
+  pause(): void {
+    const p = this.saved();
+    if (p) this.planCall(this.api.pauseAdPlan(p.id));
+  }
+
+  syncMeta(): void {
+    const p = this.saved();
+    if (p) this.planCall(this.api.syncAdPlan(p.id));
+  }
+
+  changeBudget(): void {
+    const p = this.saved();
+    const budget = this.newBudget();
+    if (!p || !budget) return;
+    this.planCall(this.api.updateAdPlan(p.id, { daily_budget: budget }), (plan) => (this.ad.daily_budget = plan.daily_budget));
+  }
+
   copy(value: string, label: string): void {
     navigator.clipboard?.writeText(value).then(() => {
       this.copied.set(label);
@@ -724,8 +935,41 @@ export class AdWizardComponent implements OnInit, OnDestroy {
     ).subscribe((plan) => { this.saved.set(plan); this.changedPlan.emit(plan); }));
   }
 
+  private pollMeta(id: number): void {
+    this.subs.add(timer(1500, 2000).pipe(
+      switchMap(() => this.api.adPlan(id)),
+      takeWhile((p) => p.meta.job_status === 'queued' || p.meta.job_status === 'running', true),
+    ).subscribe((plan) => { this.saved.set(plan); this.changedPlan.emit(plan); }));
+  }
+
+  /** Operazione sulla sponsorizzata che restituisce la sponsorizzata aggiornata. */
+  private planCall(request: Observable<AdPlan>, after?: (plan: AdPlan) => void): void {
+    this.busy.set(true);
+    this.error.set(null);
+    request.subscribe({
+      next: (plan) => {
+        this.saved.set(plan);
+        this.newBudget.set(plan.daily_budget);
+        this.busy.set(false);
+        this.changedPlan.emit(plan);
+        after?.(plan);
+      },
+      error: (e) => { this.error.set(apiErrorMessage(e)); this.busy.set(false); },
+    });
+  }
+
   private load(plan: AdPlan): void {
     this.saved.set(plan);
+    this.newBudget.set(plan.daily_budget);
+    // Collegamento a Meta e foto del cliente, per pubblicare da qui.
+    this.api.metaConnection(plan.brand_profile_id).subscribe({ next: (m) => this.meta.set(m), error: () => this.meta.set(null) });
+    // Prima le foto del cliente, poi le altre della libreria.
+    this.api.assets().subscribe({
+      next: (list) => this.photos.set(list.filter((a) => a.kind === 'image')
+        .sort((a, b) => Number(b.brand_profile_id === plan.brand_profile_id) - Number(a.brand_profile_id === plan.brand_profile_id))),
+      error: () => {},
+    });
+    if (plan.meta.job_status === 'queued' || plan.meta.job_status === 'running') this.pollMeta(plan.id);
     this.ad = {
       brand_id: plan.brand_profile_id, content_id: plan.content_item_id, name: plan.name, objective: plan.objective, special_category: plan.special_category,
       audience: { ...plan.audience, interests: [...plan.audience.interests] }, daily_budget: plan.daily_budget, start_date: plan.start_date, end_date: plan.end_date,

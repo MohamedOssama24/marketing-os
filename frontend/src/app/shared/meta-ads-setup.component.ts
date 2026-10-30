@@ -1,9 +1,10 @@
 import { Component, Input, OnInit, computed, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { AdsPayer, AdsSetup, apiErrorMessage } from '../core/models';
+import { AdsPayer, AdsSetup, MetaAssets, MetaConnection, apiErrorMessage } from '../core/models';
 
 interface GuideStep {
   key: string;
@@ -111,7 +112,7 @@ const STEPS: Record<AdsPayer, GuideStep[]> = {
 @Component({
   selector: 'app-meta-ads-setup',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <section class="card meta-setup">
       <div class="strategy-head">
@@ -122,6 +123,76 @@ const STEPS: Record<AdsPayer, GuideStep[]> = {
       </div>
 
       @if (error()) { <div class="alert">{{ error() }}</div> }
+      @if (notice(); as n) { <div class="notice" [class.warning]="n.warning"><i class="ti" [class]="n.warning ? 'ti ti-alert-triangle' : 'ti ti-circle-check'" aria-hidden="true"></i> <span>{{ n.text }}</span></div> }
+
+      @if (conn(); as c) {
+        @if (c.mode) {
+          <div class="meta-connection">
+            @if (!c.connected) {
+              <div class="meta-connect-row">
+                <span><strong>Pubblica le sponsorizzate da qui</strong><br />
+                  <small class="muted">Accedi con il Facebook di chi gestisce l'account pubblicitario: con lo stesso accesso le sponsorizzate si pubblicano su Facebook e su Instagram
+                  senza aprire Gestione inserzioni, e spesa e risultati arrivano da soli.</small></span>
+                @if (auth.canEdit()) {
+                  <button class="btn primary" (click)="connect()" [disabled]="connBusy()"><i class="ti ti-brand-facebook" aria-hidden="true"></i><i class="ti ti-brand-instagram" aria-hidden="true"></i> Collega Facebook e Instagram</button>
+                }
+              </div>
+              @if (c.mode === 'sample') { <p class="muted small"><i class="ti ti-flask" aria-hidden="true"></i> Modalità di prova: il collegamento usa un account di esempio e non chiama Meta.</p> }
+            } @else {
+              <div class="meta-connect-row">
+                <span><i class="ti ti-plug-connected" aria-hidden="true"></i> Collegato con <strong>{{ c.user_name }}</strong>@if (c.sample) { <span class="tag">Esempio</span> }<br />
+                  @if (c.expired) { <small class="danger-text">Il collegamento è scaduto: ricollega Facebook per pubblicare e leggere i risultati.</small> }
+                  @else if (c.error) { <small class="danger-text">{{ c.error }}</small> }
+                  @else if (c.expires_at) { <small class="muted">Da rinnovare entro il {{ c.expires_at | date: 'd MMM y' }}</small> }</span>
+                @if (auth.canEdit()) {
+                  @if (c.expired || c.error) { <button class="btn primary small" (click)="connect()" [disabled]="connBusy()">Ricollega</button> }
+                  <button class="btn ghost small" (click)="disconnect()" [disabled]="connBusy()">Scollega</button>
+                }
+              </div>
+              @if (!c.expired) {
+                <div class="form-grid">
+                  <label>Account pubblicitario
+                    @if (assets(); as a) {
+                      <select [ngModel]="c.ad_account?.id ?? null" (ngModelChange)="choose({ ad_account_id: $event })" [disabled]="!auth.canEdit() || connBusy()">
+                        @if (!c.ad_account) { <option [ngValue]="null" disabled>Scegli l'account</option> }
+                        @for (acc of a.ad_accounts; track acc.id) {
+                          <option [ngValue]="acc.id" [disabled]="!acc.active">{{ acc.name }} · {{ acc.currency }}@if (acc.business) { · {{ acc.business }}}@if (!acc.active) { (non attivo)}</option>
+                        }
+                      </select>
+                    } @else { <input [value]="c.ad_account?.name ?? 'Non scelto'" disabled /> }
+                  </label>
+                  <label>Pagina Facebook
+                    @if (assets(); as a) {
+                      <select [ngModel]="c.page?.id ?? null" (ngModelChange)="choose({ page_id: $event })" [disabled]="!auth.canEdit() || connBusy()">
+                        @if (!c.page) { <option [ngValue]="null" disabled>Scegli la pagina</option> }
+                        @for (p of a.pages; track p.id) { <option [ngValue]="p.id">{{ p.name }}@if (p.instagram_username) { · Instagram &#64;{{ p.instagram_username }}}</option> }
+                      </select>
+                    } @else { <input [value]="c.page?.name ?? 'Non scelta'" disabled /> }
+                  </label>
+                </div>
+                @if (auth.canEdit() && !assets()) {
+                  <button class="link-btn small" (click)="loadAssets()" [disabled]="connBusy()">Cambia account o pagina</button>
+                }
+                <p class="muted small">
+                  @if (c.ready) {
+                    <i class="ti ti-circle-check" aria-hidden="true"></i> Pronto: le sponsorizzate escono su Facebook
+                    @if (c.instagram) { e su Instagram (&#64;{{ c.instagram.username }})} @else { (la pagina non ha un Instagram professionale collegato: escono solo su Facebook)}.
+                  } @else { Scegli account pubblicitario e pagina per pubblicare. }
+                </p>
+                @if (assets()?.pages?.length === 0) {
+                  <p class="hint small"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Facebook non ha condiviso nessuna pagina: le inserzioni escono a nome di una pagina.
+                    Crea una pagina Facebook (o fatti dare l'accesso a quella del cliente), poi premi «Scollega», ricollega e, quando Facebook lo chiede, seleziona la pagina.</p>
+                }
+                @if (c.ad_account?.currency && c.ad_account!.currency!.toUpperCase() !== 'EUR') {
+                  <p class="hint small"><i class="ti ti-alert-triangle" aria-hidden="true"></i> L'account è in {{ c.ad_account!.currency }}, ma i budget dell'app sono in euro: per pubblicare scegli un account pubblicitario in EUR.</p>
+                }
+              }
+            }
+          </div>
+        } @else {
+          <p class="muted small"><i class="ti ti-info-circle" aria-hidden="true"></i> Per pubblicare le sponsorizzate da qui va configurata l'app Meta (META_APP_ID e META_APP_SECRET). Intanto segui la guida qui sotto.</p>
+        }
+      }
 
       @if (setup(); as s) {
         @if (!s.ads_payer || choosing()) {
@@ -197,7 +268,14 @@ export class MetaAdsSetupComponent implements OnInit {
 
   readonly auth = inject(AuthService);
   private api = inject(ApiService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
   readonly billingUrl = BILLING;
+
+  conn = signal<MetaConnection | null>(null);
+  assets = signal<MetaAssets | null>(null);
+  connBusy = signal(false);
+  notice = signal<{ text: string; warning: boolean } | null>(null);
 
   setup = signal<AdsSetup | null>(null);
   choosing = signal(false);
@@ -214,6 +292,70 @@ export class MetaAdsSetupComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.adsSetup(this.brandId).subscribe({ next: (s) => this.apply(s), error: (err) => this.error.set(apiErrorMessage(err)) });
+    this.api.metaConnection(this.brandId).subscribe({ next: (c) => this.applyConnection(c), error: (err) => this.error.set(apiErrorMessage(err)) });
+    // Ritorno da Facebook: l'esito arriva nell'indirizzo e poi si toglie, così ricaricando non ricompare.
+    const params = this.route.snapshot.queryParamMap;
+    const result = params.get('meta');
+    if (result) {
+      this.notice.set(result === 'connected'
+        ? { text: 'Facebook collegato. Controlla account pubblicitario e pagina.', warning: false }
+        : { text: params.get('meta_message') || 'Collegamento a Facebook non riuscito.', warning: true });
+      this.router.navigate([], { queryParams: { meta: null, meta_message: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
+  }
+
+  /** Apre l'accesso a Facebook nella stessa finestra; con i dati di esempio il collegamento è immediato. */
+  connect(): void {
+    this.connBusy.set(true);
+    this.error.set(null);
+    this.api.connectMeta(this.brandId).subscribe({
+      next: (r) => {
+        if (r.url) {
+          window.location.href = r.url;
+          return;
+        }
+        this.connBusy.set(false);
+        if (r.connection) this.applyConnection(r.connection);
+      },
+      error: (err) => { this.connBusy.set(false); this.error.set(apiErrorMessage(err)); },
+    });
+  }
+
+  disconnect(): void {
+    if (!confirm('Scollegare Facebook per questo cliente? Le sponsorizzate già pubblicate restano su Meta, ma da qui non si potranno più gestire.')) return;
+    this.connBusy.set(true);
+    this.api.disconnectMeta(this.brandId).subscribe({
+      next: (c) => { this.connBusy.set(false); this.assets.set(null); this.applyConnection(c); },
+      error: (err) => { this.connBusy.set(false); this.error.set(apiErrorMessage(err)); },
+    });
+  }
+
+  loadAssets(): void {
+    this.connBusy.set(true);
+    this.api.metaAssets(this.brandId).subscribe({
+      next: (a) => { this.connBusy.set(false); this.assets.set(a); },
+      error: (err) => { this.connBusy.set(false); this.error.set(apiErrorMessage(err)); },
+    });
+  }
+
+  choose(data: { ad_account_id?: string; page_id?: string }): void {
+    this.connBusy.set(true);
+    this.error.set(null);
+    this.api.updateMetaConnection(this.brandId, data).subscribe({
+      next: (c) => {
+        this.connBusy.set(false);
+        this.conn.set(c);
+        // L'account scelto diventa anche quello della guida qui sotto.
+        if (data.ad_account_id) this.api.adsSetup(this.brandId).subscribe({ next: (s) => this.apply(s) });
+      },
+      error: (err) => { this.connBusy.set(false); this.error.set(apiErrorMessage(err)); },
+    });
+  }
+
+  /** Appena collegato si mostrano subito account e pagine, se manca ancora una scelta. */
+  private applyConnection(c: MetaConnection): void {
+    this.conn.set(c);
+    if (c.connected && !c.expired && !c.ready && !this.assets()) this.loadAssets();
   }
 
   isDone(key: string): boolean {

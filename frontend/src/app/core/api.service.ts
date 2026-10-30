@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
-  API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, CompetitorAdsView, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdCheck, AdPlan, AdPlanInput, AdPlanStatus, MetaMonitor, MetaRulebook, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
+  API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, CompetitorAdsView, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdCheck, AdPlan, AdPlanInput, AdPlanStatus, MetaAssets, MetaConnection, MetaMonitor, MetaRulebook, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
   NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
 } from './models';
 
@@ -177,6 +177,17 @@ export class ApiService {
   updateAdPlan = (id: number, ad: Partial<AdPlanInput> & { status?: AdPlanStatus }) => this.patch<AdPlan>(`/ad-plans/${id}`, ad);
   deleteAdPlan = (id: number) => this.delete(`/ad-plans/${id}`);
   reviewAdPlan = (id: number) => this.post<AdPlan>(`/ad-plans/${id}/review`);
+  publishAdPlan = (id: number) => this.post<AdPlan>(`/ad-plans/${id}/publish`);
+  activateAdPlan = (id: number, confirmDailyBudget: number) => this.post<AdPlan>(`/ad-plans/${id}/activate`, { confirm_daily_budget: confirmDailyBudget });
+  pauseAdPlan = (id: number) => this.post<AdPlan>(`/ad-plans/${id}/pause`);
+  syncAdPlan = (id: number) => this.post<AdPlan>(`/ad-plans/${id}/meta-sync`);
+
+  // Collegamento diretto a Meta del cliente (accesso a Facebook, account pubblicitario, pagina)
+  metaConnection = (brandId: number) => this.get<MetaConnection>(`/brands/${brandId}/meta`);
+  connectMeta = (brandId: number) => this.post<{ url: string | null; connection: MetaConnection | null }>(`/brands/${brandId}/meta/connect`);
+  metaAssets = (brandId: number) => this.get<MetaAssets>(`/brands/${brandId}/meta/assets`);
+  updateMetaConnection = (brandId: number, data: { ad_account_id?: string; page_id?: string }) => this.patch<MetaConnection>(`/brands/${brandId}/meta`, data);
+  disconnectMeta = (brandId: number) => this.http.delete<Data<MetaConnection>>(`${API_URL}/brands/${brandId}/meta`).pipe(map((r) => r.data));
 
   // Link tracciati
   links(filter: { brandId?: number | null; contentId?: number } = {}): Observable<TrackedLink[]> {

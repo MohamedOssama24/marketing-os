@@ -65,6 +65,11 @@ type Draft = Omit<AdSpendInput, 'spent'> & { id: number | null; spent: number | 
               <span class="verdict-pill" [attr.data-verdict]="p.review?.verdict ?? p.checks.verdict">
                 <i class="ti" [class]="'ti ' + verdictIcons[p.review?.verdict ?? p.checks.verdict]" aria-hidden="true"></i> {{ verdictLabels[p.review?.verdict ?? p.checks.verdict] }}</span>
             }
+            @if (p.meta.ad_id) {
+              <span class="tag" title="Pubblicata da Marketing OS"><i class="ti ti-brand-meta" aria-hidden="true"></i>
+                {{ p.meta.status === 'active' ? 'Attiva' : p.meta.status === 'disapproved' ? 'Rifiutata' : p.meta.status === 'pending_review' ? 'In revisione' : 'Su Meta' }}
+                @if (p.meta.results) { · {{ p.meta.results.spent | currency: 'EUR' }} }</span>
+            }
             <span class="badge" [attr.data-status]="planBadge[p.status]">{{ planStatus[p.status] }}</span>
           </button>
         }
