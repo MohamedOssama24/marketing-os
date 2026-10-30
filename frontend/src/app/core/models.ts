@@ -260,6 +260,12 @@ export interface Dashboard {
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 
+/** Suggerimenti mentre si scrive il sito del cliente: clienti già presenti e domini esistenti. */
+export interface DomainSuggestions {
+  clients: { id: number; name: string; website_url: string | null }[];
+  domains: string[];
+}
+
 export interface Job {
   id: number;
   type: string;

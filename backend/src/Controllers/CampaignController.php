@@ -5,6 +5,8 @@ final class CampaignController
 {
     public const CAMPAIGN_CHANNELS = ['instagram', 'facebook', 'linkedin', 'blog', 'email'];
     private const MAX_POSTS = 16;
+    /** Estensioni provate quando si scrive solo il nome del sito, nell'ordine in cui vengono proposte. */
+    private const DOMAIN_EXTENSIONS = ['it', 'com', 'eu', 'net', 'org', 'shop', 'info'];
     private const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 
     /** "Dal sito alla campagna", primo passo: legge il sito e crea il cliente con il suo brand kit. */
@@ -20,6 +22,43 @@ final class CampaignController
         $job = Jobs::enqueue($user, 'analyze_site', ['url' => $url]);
         Audit::log($user, 'brand.analysis_requested', 'job', (int)$job['id']);
         Http::json(['data' => $job], 202);
+    }
+
+    /**
+     * Suggerimenti mentre si scrive l'indirizzo: clienti già presenti con quel sito o nome
+     * e domini che esistono davvero (es. "pasticceriarossi" → pasticceriarossi.it, .com…).
+     */
+    public static function domainSuggestions(): never
+    {
+        $user = Auth::userWithRole(Auth::EDITORS);
+        $q = mb_strtolower(trim((string)($_GET['q'] ?? '')));
+        $q = preg_replace(['#^https?://#', '#^www\.#', '#[/?\#].*$#'], '', $q);
+        if (mb_strlen($q) < 3 || mb_strlen($q) > 100) Http::json(['data' => ['clients' => [], 'domains' => []]]);
+
+        $stmt = Database::connection()->prepare(
+            'SELECT id, name, website_url FROM brand_profiles WHERE organization_id=? AND (website_url LIKE ? OR name LIKE ?) ORDER BY name LIMIT 5'
+        );
+        $like = '%' . addcslashes($q, '%_\\') . '%';
+        $stmt->execute([$user['organization_id'], $like, $like]);
+        $clients = array_map(fn($r) => ['id' => (int)$r['id'], 'name' => $r['name'], 'website_url' => $r['website_url']], $stmt->fetchAll());
+
+        // Il nome prima del primo punto diventa il dominio; dopo il punto si filtrano le estensioni ("rossi.c" → rossi.com).
+        [$label, $ext] = array_pad(explode('.', $q, 2), 2, '');
+        $label = trim(preg_replace('/[^a-z0-9-]/', '', str_replace(' ', '', $label)), '-');
+        $candidates = [];
+        if ($label !== '' && strlen($label) <= 63) {
+            if ($ext !== '' && preg_match('/^[a-z0-9.-]*[a-z]{2,}$/', $ext)) $candidates[] = "{$label}.{$ext}";
+            foreach (self::DOMAIN_EXTENSIONS as $tld) {
+                if ($ext === '' || str_starts_with($tld, $ext)) $candidates[] = "{$label}.{$tld}";
+            }
+        }
+        $domains = [];
+        foreach (array_unique($candidates) as $domain) {
+            // Solo risoluzione DNS, nessuna richiesta al sito: basta sapere se il dominio esiste.
+            if (gethostbynamel($domain) || gethostbynamel("www.{$domain}")) $domains[] = $domain;
+            if (count($domains) >= 5) break;
+        }
+        Http::json(['data' => ['clients' => $clients, 'domains' => $domains]]);
     }
 
     /** Rilegge il sito di un cliente esistente e aggiorna il suo brand kit (e le foto). */

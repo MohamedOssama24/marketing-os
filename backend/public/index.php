@@ -83,6 +83,7 @@ $router->add('POST', '/api/v1/content/{id}/schedule', [ContentController::class,
 $router->add('GET', '/api/v1/approvals', [ContentController::class, 'pendingApproval']);
 
 $router->add('POST', '/api/v1/onboarding/analyze', [CampaignController::class, 'analyzeSite']);
+$router->add('GET', '/api/v1/onboarding/domain-suggestions', [CampaignController::class, 'domainSuggestions']);
 $router->add('POST', '/api/v1/brands/{brandId}/campaigns', [CampaignController::class, 'create']);
 $router->add('POST', '/api/v1/brands/{brandId}/analyze', [CampaignController::class, 'reanalyzeSite']);
 $router->add('POST', '/api/v1/brands/{brandId}/goal-suggestions', [CampaignController::class, 'suggestGoals']);

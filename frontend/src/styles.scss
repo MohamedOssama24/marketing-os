@@ -188,6 +188,12 @@ legend { font-weight: 500; font-size: 0.86rem; margin-bottom: 6px; }
 .input-icon { position: relative; flex: 1; i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; }
   input { width: 100%; padding-left: 40px; height: 44px; } }
 .analyzer-form .btn { height: 44px; padding: 0 20px; }
+.site-suggestions { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12); padding: 6px; max-height: 320px; overflow-y: auto; }
+.site-suggestions-group { margin: 6px 10px 4px; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.site-suggestion { width: 100%; display: flex; align-items: center; gap: 10px; font: inherit; color: var(--text); background: none; border: none; border-radius: 9px; padding: 9px 10px; cursor: pointer; text-align: left;
+  &.active { background: var(--primary-soft); }
+  .input-icon & i { position: static; transform: none; } }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
   li { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
   li.active { color: var(--primary-ink); border-color: #cfc9f7; font-weight: 600; }

@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
   API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, CompetitorAdsView, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdCheck, AdPlan, AdPlanInput, AdPlanStatus, MetaAssets, MetaConnection, MetaMonitor, MetaRulebook, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
-  NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
+  DomainSuggestions, NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
 } from './models';
 
 type Data<T> = { data: T };
@@ -39,6 +39,8 @@ export class ApiService {
 
   // Dal sito alla campagna
   analyzeSite = (url: string) => this.post<Job>('/onboarding/analyze', { url });
+  domainSuggestions = (q: string) =>
+    this.get<DomainSuggestions>(`/onboarding/domain-suggestions?q=${encodeURIComponent(q)}`);
   createCampaign = (brandId: number, req: CampaignRequest) =>
     this.post<{ project: Project; job: Job }>(`/brands/${brandId}/campaigns`, req);
   reanalyzeBrand = (brandId: number, url?: string) => this.post<Job>(`/brands/${brandId}/analyze`, url ? { url } : {});

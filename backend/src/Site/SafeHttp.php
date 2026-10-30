@@ -75,6 +75,7 @@ final class SafeHttp
         if (!in_array($port, [80, 443], true)) throw new BlockedAddressException('Sono ammesse solo le porte standard 80 e 443.');
 
         $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+        if (!$ips && !str_contains($host, '.')) throw new SiteException('Dominio non trovato: manca l\'estensione del sito (ad esempio .it o .com).');
         if (!$ips) throw new SiteException('Dominio non trovato.');
         foreach ($ips as $ip) {
             $carrierNat = (ip2long($ip) & 0xFFC00000) === (ip2long('100.64.0.0') & 0xFFC00000);
