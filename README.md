@@ -183,4 +183,5 @@ docker compose down -v
 - Il volume MySQL conserva i dati tra riavvii.
 - Lo schema SQL viene eseguito automaticamente solo al primo avvio di un volume vuoto. Se modifichi `schema.sql` dopo l'avvio, non verrà riapplicato automaticamente.
 - Questo progetto è un prototipo locale e non va esposto pubblicamente senza hardening, test e revisione di sicurezza. Dettagli in `docs/ARCHITECTURE.md`.
+- Per metterlo online gratis (Oracle Cloud + DuckDNS, HTTPS con Caddy, backup notturno) segui `docs/DEPLOY-ORACLE.md`.
 - L'endpoint di registrazione è aperto per facilitare il test locale; prima di una beta pubblica servono rate limiting e verifica email.

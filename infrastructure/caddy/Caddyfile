@@ -1,0 +1,8 @@
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy nginx:80 {
+		# nginx legge l'IP del visitatore da questa intestazione (limite dei tentativi di login):
+		# Caddy la sovrascrive sempre con l'IP vero, così da fuori non si può falsificare.
+		header_up CF-Connecting-IP {remote_host}
+	}
+}

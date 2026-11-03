@@ -1,0 +1,30 @@
+# Produzione su un server (guida in docs/DEPLOY-ORACLE.md). Si aggiunge al file principale:
+# con COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml nel .env basta `docker compose up -d`.
+services:
+  app:
+    restart: unless-stopped
+  nginx:
+    restart: unless-stopped
+  db:
+    restart: unless-stopped
+
+  # HTTPS: Caddy prende e rinnova da solo il certificato gratuito per DOMAIN e passa tutto a nginx.
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Imposta DOMAIN nel file .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [nginx]
+    networks: [marketing]
+
+volumes:
+  caddy_data:
+  caddy_config:
