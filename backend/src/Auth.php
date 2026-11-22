@@ -6,22 +6,26 @@ final class Auth
     public const MANAGERS = ['owner', 'admin'];
     public const EDITORS = ['owner', 'admin', 'editor'];
 
-    public static function user(): array
+    /** @param bool $allowExpired true per le chiamate che servono anche a prova scaduta (stato e pagamento dell'abbonamento). */
+    public static function user(bool $allowExpired = false): array
     {
         $token = Http::bearerToken();
         if (!$token) Http::json(['error' => 'unauthorized', 'message' => 'Token Bearer mancante.'], 401);
         $pdo = Database::connection();
-        $stmt = $pdo->prepare('SELECT u.id, u.organization_id, o.name AS organization_name, u.name, u.email, u.role, u.is_platform_admin, o.status AS organization_status, t.id AS token_id
+        $stmt = $pdo->prepare('SELECT u.id, u.organization_id, o.name AS organization_name, u.name, u.email, u.role, u.is_platform_admin, o.status AS organization_status,
+                o.plan, o.trial_ends_at, o.subscription_status, o.current_period_end, t.id AS token_id
             FROM api_tokens t JOIN users u ON u.id=t.user_id JOIN organizations o ON o.id=u.organization_id
             WHERE t.token_hash=? AND t.expires_at > UTC_TIMESTAMP() LIMIT 1');
         $stmt->execute([hash('sha256', $token)]);
         $user = $stmt->fetch();
         if (!$user) Http::json(['error' => 'unauthorized', 'message' => 'Token non valido o scaduto.'], 401);
         if ($user['organization_status'] === 'suspended') self::suspended();
+        $user['is_platform_admin'] = (bool)$user['is_platform_admin'];
+        // Prova finita o abbonamento non pagato: l'app è bloccata (gli amministratori della piattaforma entrano sempre).
+        if (!$allowExpired && !$user['is_platform_admin'] && !Subscription::hasAccess($user)) Subscription::blocked($user);
         $user['id'] = (int)$user['id'];
         $user['organization_id'] = (int)$user['organization_id'];
-        $user['is_platform_admin'] = (bool)$user['is_platform_admin'];
-        unset($user['organization_status']);
+        unset($user['organization_status'], $user['plan'], $user['trial_ends_at'], $user['subscription_status'], $user['current_period_end']);
         return $user;
     }
 
@@ -39,9 +43,9 @@ final class Auth
     }
 
     /** Utente autenticato con uno dei ruoli indicati, altrimenti 403. */
-    public static function userWithRole(array $roles): array
+    public static function userWithRole(array $roles, bool $allowExpired = false): array
     {
-        $user = self::user();
+        $user = self::user($allowExpired);
         if (!in_array($user['role'], $roles, true)) {
             Http::json(['error' => 'forbidden', 'message' => 'Il tuo ruolo non consente questa operazione.'], 403);
         }

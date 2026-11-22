@@ -16,6 +16,7 @@ import { apiErrorMessage } from '../../core/models';
         <div class="brand">Marketing <span>OS</span></div>
         <h1>Crea il tuo account</h1>
         <p class="muted">Registrandoti crei anche la tua organizzazione.</p>
+        <p class="hint"><i class="ti ti-gift" aria-hidden="true"></i> 10 giorni di prova gratuita, senza carta. Poi 15 € al mese o 120 € all'anno.</p>
 
         @if (error()) { <div class="alert">{{ error() }}</div> }
 

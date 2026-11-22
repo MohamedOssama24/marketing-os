@@ -24,31 +24,35 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
         $apiKey = getenv('GEMINI_API_KEY');
         if (!$apiKey) throw new GenerationException('Generazione AI non configurata: manca GEMINI_API_KEY.');
         $this->apiKey = $apiKey;
-        $this->http = new HttpClient(['timeout' => 180,'connect_timeout' => 15]);
+        $this->http = new HttpClient(['timeout' => 120, 'connect_timeout' => 10]);
     }
 
     protected function request(string $system, string $prompt, array $schema, ?string $effort, int $maxTokens): array
     {
         $model = getenv('GEMINI_MODEL') ?: 'gemini-flash-latest';
+        $config = [
+            'responseMimeType' => 'application/json',
+            'responseJsonSchema' => self::geminiSchema($schema),
+            // Su Gemini il ragionamento conta nei token di risposta: serve più margine che con Claude.
+            'maxOutputTokens' => min(65536, max($maxTokens, 8000) * 2),
+        ];
+        // Il ragionamento è la parte più lenta: per testi di marketing basta poco (GEMINI_THINKING: minimal, low, medium, high).
+        $thinking = strtolower((string)(getenv('GEMINI_THINKING') ?: 'low'));
+        if (in_array($thinking, ['minimal', 'low', 'medium', 'high'], true)) $config['thinkingConfig'] = ['thinkingLevel' => $thinking];
         $body = [
             'systemInstruction' => ['parts' => [['text' => $system]]],
             'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-            'generationConfig' => [
-                'responseMimeType' => 'application/json',
-                'responseJsonSchema' => self::geminiSchema($schema),
-                // Su Gemini il ragionamento conta nei token di risposta: serve più margine che con Claude.
-                'maxOutputTokens' => min(65536, max($maxTokens, 8000) * 2),
-            ],
+            'generationConfig' => $config,
         ];
-        // Sul piano gratuito i modelli sono spesso "molto richiesti" (503) per pochi secondi: si riprova, l'ultima volta con il modello leggero.
-        $attempts = [[$model, 0], [$model, 3], [self::FALLBACK_MODEL, 8]];
-        foreach ($attempts as $i => [$attemptModel, $wait]) {
+        // Sul piano gratuito il modello principale è spesso "molto richiesto" (503) o non risponde: invece di aspettare
+        // si passa subito al modello leggero, e solo alla fine si riprova il principale. [modello, attesa, tempo massimo]
+        $attempts = $model === self::FALLBACK_MODEL
+            ? [[$model, 0, 90], [$model, 3, 120]]
+            : [[$model, 0, 40], [self::FALLBACK_MODEL, 0, 90], [$model, 4, 120]];
+        foreach ($attempts as $i => [$attemptModel, $wait, $timeout]) {
             sleep($wait);
             try {
-                $response = $this->http->post(sprintf(self::ENDPOINT, rawurlencode($attemptModel)), [
-                    'headers' => ['x-goog-api-key' => $this->apiKey],
-                    'json' => $body,
-                ]);
+                $response = $this->send($attemptModel, $body, $timeout);
                 break;
             } catch (ConnectException) {
                 // Anche una risposta che non arriva entro il tempo massimo è un sovraccarico momentaneo.
@@ -56,7 +60,19 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
                 throw new ProviderUnavailableException('Impossibile contattare il servizio AI.');
             } catch (RequestException $e) {
                 $status = $e->getResponse()?->getStatusCode() ?? 0;
-                if (in_array($status, [500, 503], true) && $i < count($attempts) - 1) continue;
+                // Un modello che non conosce il livello di ragionamento: da qui in poi si chiede senza.
+                if ($status === 400 && isset($body['generationConfig']['thinkingConfig']) && str_contains((string)$e->getResponse()?->getBody(), 'hinking')) {
+                    unset($body['generationConfig']['thinkingConfig']);
+                    try {
+                        $response = $this->send($attemptModel, $body, $timeout);
+                        break;
+                    } catch (RequestException $retry) {
+                        $e = $retry;
+                        $status = $e->getResponse()?->getStatusCode() ?? 0;
+                    }
+                }
+                // 429: il modello leggero ha una quota sua, quindi vale la pena provarlo.
+                if (in_array($status, [429, 500, 503], true) && $i < count($attempts) - 1) continue;
                 $this->fail($e, $attemptModel);
             }
         }
@@ -77,6 +93,15 @@ final class GeminiMarketingAi extends ClaudeMarketingAi
         $result = json_decode($text, true);
         if (!is_array($result)) throw new GenerationException('Risposta AI in un formato inatteso. Riprova.');
         return $result;
+    }
+
+    private function send(string $model, array $body, int $timeout): \Psr\Http\Message\ResponseInterface
+    {
+        return $this->http->post(sprintf(self::ENDPOINT, rawurlencode($model)), [
+            'headers' => ['x-goog-api-key' => $this->apiKey],
+            'json' => $body,
+            'timeout' => $timeout,
+        ]);
     }
 
     private function fail(RequestException $e, string $model): never

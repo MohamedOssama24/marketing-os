@@ -21,8 +21,9 @@ final class AuthController
         self::assertPassword($password);
         RateLimiter::record($registerKey);
         // Con REGISTRATION_INVITE_CODE impostato si registra solo chi ha il codice (app esposta su internet).
-        $inviteCode = (string)(getenv('REGISTRATION_INVITE_CODE') ?: '');
-        if ($inviteCode !== '' && !hash_equals($inviteCode, (string)($data['invite_code'] ?? ''))) {
+        // Spazi e maiuscole non contano: un codice copiato con uno spazio in più resta valido.
+        $inviteCode = strtolower(trim((string)(getenv('REGISTRATION_INVITE_CODE') ?: '')));
+        if ($inviteCode !== '' && !hash_equals($inviteCode, strtolower(trim((string)($data['invite_code'] ?? ''))))) {
             Http::json(['error' => 'invalid_invite_code', 'message' => 'Codice di invito non valido.'], 403);
         }
 
@@ -31,8 +32,9 @@ final class AuthController
         $pdo = Database::connection();
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO organizations (name, slug) VALUES (?, ?)');
-            $stmt->execute([$organizationName, $slug]);
+            // Ogni nuova agenzia parte con la prova gratuita; allo scadere serve l'abbonamento.
+            $stmt = $pdo->prepare('INSERT INTO organizations (name, slug, plan, trial_ends_at) VALUES (?, ?, \'trial\', UTC_TIMESTAMP() + INTERVAL ? DAY)');
+            $stmt->execute([$organizationName, $slug, Subscription::trialDays()]);
             $organizationId = (int)$pdo->lastInsertId();
             // La registrazione apre già una sessione: conta come primo accesso.
             $stmt = $pdo->prepare('INSERT INTO users (organization_id, name, email, password_hash, role, last_login_at) VALUES (?, ?, ?, ?, \'owner\', UTC_TIMESTAMP())');
@@ -44,7 +46,8 @@ final class AuthController
             if ($e instanceof PDOException && $e->getCode() === '23000') Http::json(['error' => 'email_already_exists', 'message' => 'Questa email è già registrata.'], 409);
             throw $e;
         }
-        Http::json(['data' => ['user' => ['id' => $userId, 'organization_id' => $organizationId, 'name' => $name, 'email' => $email, 'role' => 'owner'], 'token' => Auth::issueToken($userId)]], 201);
+        Http::json(['data' => ['user' => ['id' => $userId, 'organization_id' => $organizationId, 'name' => $name, 'email' => $email, 'role' => 'owner',
+            'subscription' => Subscription::summary(Subscription::load($organizationId))], 'token' => Auth::issueToken($userId)]], 201);
     }
 
     public static function login(): never
@@ -73,6 +76,8 @@ final class AuthController
         $pdo->prepare('UPDATE users SET last_login_at=UTC_TIMESTAMP() WHERE id=?')->execute([$user['id']]);
         unset($user['password_hash'], $user['organization_status']);
         $user['is_platform_admin'] = (bool)$user['is_platform_admin'];
+        // Anche a prova scaduta si entra: l'app mostra subito la pagina per abbonarsi.
+        $user['subscription'] = Subscription::summary(Subscription::load((int)$user['organization_id']));
         Http::json(['data' => ['user' => $user, 'token' => Auth::issueToken((int)$user['id'])]]);
     }
 
@@ -87,8 +92,9 @@ final class AuthController
 
     public static function me(): never
     {
-        $user = Auth::user();
+        $user = Auth::user(allowExpired: true);
         unset($user['token_id']);
+        $user['subscription'] = Subscription::summary(Subscription::load($user['organization_id']));
         Http::json(['data' => ['user' => $user]]);
     }
 

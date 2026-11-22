@@ -79,15 +79,22 @@ final class SiteReader
     public static function read(string $inputUrl): array
     {
         $url = SafeHttp::normalizeUrl($inputUrl);
+        $host = (string)parse_url($url, PHP_URL_HOST);
+        $canTryWww = !str_starts_with($host, 'www.') && !filter_var($host, FILTER_VALIDATE_IP);
         try {
-            $home = SafeHttp::get($url);
+            // Se c'è l'alternativa con www., il secondo tentativo lo fa quella.
+            $home = SafeHttp::get($url, 2_000_000, 12, !$canTryWww);
         } catch (BlockedAddressException $e) {
             throw $e;
         } catch (SiteException $e) {
             // Molti siti rispondono solo su www.: se l'utente ha scritto il dominio nudo, riprova così.
-            $host = (string)parse_url($url, PHP_URL_HOST);
-            if (str_starts_with($host, 'www.') || filter_var($host, FILTER_VALIDATE_IP)) throw $e;
-            $home = SafeHttp::get(preg_replace('#//' . preg_quote($host, '#') . '#', '//www.' . $host, $url, 1));
+            if (!$canTryWww) throw $e;
+            try {
+                $home = SafeHttp::get(preg_replace('#//' . preg_quote($host, '#') . '#', '//www.' . $host, $url, 1), 2_000_000, 12);
+            } catch (SiteException $www) {
+                // Il motivo che conta è quello dell'indirizzo scritto dall'utente, a meno che il sito sia solo lento.
+                throw $www instanceof TransientSiteException ? $www : $e;
+            }
         }
         if (!str_contains($home['content_type'], 'html')) throw new SiteException('L\'indirizzo non è una pagina web.');
         $baseUrl = $home['url'];
@@ -103,7 +110,14 @@ final class SiteReader
         // Motto del sito: in molti temi (WordPress compreso) è la descrizione accanto al logo.
         $tagline = $meta('//*[contains(@class,"site-description") or contains(@class,"tagline") or contains(@class,"slogan")]');
 
-        $css = self::css($xpath, $baseUrl, $host);
+        // Fogli di stile e pagine interne si scaricano tutti insieme: si aspetta solo il più lento.
+        $sheetUrls = self::stylesheetUrls($xpath, $baseUrl, $host);
+        $links = [];
+        foreach ($xpath->query('//a[@href]') as $link) $links[] = [(string)$link->getAttribute('href'), self::clean($link->textContent)];
+        $candidates = self::pageCandidates($links, $baseUrl, $host);
+        $downloads = SafeHttp::getMany([...$sheetUrls, ...array_merge(...array_values($candidates))]);
+
+        $css = self::css($xpath, array_map(fn($url) => $downloads[$url]['body'] ?? '', $sheetUrls));
         $colors = self::colors($css, $meta('//meta[@name="theme-color"]/@content'));
         $fonts = self::fonts($css, $xpath);
 
@@ -123,9 +137,7 @@ final class SiteReader
                 $menu[mb_strtolower($label)] = $label;
             }
         }
-        $links = [];
-        foreach ($xpath->query('//a[@href]') as $link) $links[] = [(string)$link->getAttribute('href'), self::clean($link->textContent)];
-        $hrefs = [...array_column($links, 0), ...$org['same_as']];
+        $hrefs =[...array_column($links, 0), ...$org['same_as']];
         $socials = self::socialProfiles($hrefs, self::MAIN_SOCIALS);
 
         // Testo di tutta la home, piè di pagina compreso: è lì che stanno indirizzo, telefono e partita IVA.
@@ -138,25 +150,17 @@ final class SiteReader
         $pages = [self::page($dom, $baseUrl, 6000)];
         $images = $pages[0]['images'];
         if ($ogImage = self::absolute($baseUrl, $meta('//meta[@property="og:image"]/@content') ?? '')) array_unshift($images, $ogImage);
-        $seen = [rtrim($baseUrl, '/') => true];
-        foreach (self::PAGE_GROUPS as [$pattern, $limit]) {
+        foreach (self::PAGE_GROUPS as $group => [, $limit]) {
             $taken = 0;
-            foreach ($links as [$rawHref, $label]) {
+            foreach ($candidates[$group] as $key) {
                 if ($taken >= $limit) break;
-                $href = self::absolute($baseUrl, $rawHref);
-                if (!$href || strtolower((string)parse_url($href, PHP_URL_HOST)) !== $host) continue;
-                $key = rtrim((string)strtok($href, '#?'), '/');
-                if (isset($seen[$key]) || !preg_match($pattern, $key . ' ' . $label)) continue;
-                $seen[$key] = true;
-                try {
-                    $response = SafeHttp::get($key, 1_500_000, 8);
-                    if (!str_contains($response['content_type'], 'html')) continue;
-                    $page = self::page(self::dom($response['body']), $key, 3000);
-                    if (mb_strlen($page['text']) < 120) continue;
-                    $pages[] = $page;
-                    $images = [...$images, ...$page['images']];
-                    $taken++;
-                } catch (SiteException) {}
+                $response = $downloads[$key] ?? null;
+                if (!$response || !str_contains($response['content_type'], 'html')) continue;
+                $page = self::page(self::dom($response['body']), $key, 3000);
+                if (mb_strlen($page['text']) < 120) continue;
+                $pages[] = $page;
+                $images = [...$images, ...$page['images']];
+                $taken++;
             }
         }
 
@@ -193,9 +197,13 @@ final class SiteReader
     public static function downloadLogo(array $logos): ?array
     {
         $white = null;
+        $logos = array_map(fn($logo) => is_string($logo) ? ['url' => $logo] : $logo, $logos);
+        // I primi candidati si scaricano tutti insieme; gli altri (raramente servono) uno alla volta.
+        $first = array_slice(array_values(array_filter(array_column($logos, 'url'))), 0, 5);
+        $prefetched = SafeHttp::getMany($first, 5_000_000, 8);
         foreach ($logos as $logo) {
-            if (is_string($logo)) $logo = ['url' => $logo];
-            $image = isset($logo['svg']) ? self::rasterize($logo['svg']) : self::download($logo['url'], 200, true);
+            $image = isset($logo['svg']) ? self::rasterize($logo['svg'])
+                : self::download($logo['url'], 200, true, array_key_exists($logo['url'], $prefetched) ? $prefetched : null);
             if (!$image) continue;
             $base = isset($logo['url']) ? (basename((string)parse_url($logo['url'], PHP_URL_PATH)) ?: 'sito') : 'sito.svg';
             if ($image['converted']) $base = preg_replace('/\.svg$/i', '', $base) . '.png';
@@ -214,9 +222,12 @@ final class SiteReader
     {
         $images = [];
         $hashes = [];
-        foreach ($candidates as $url) {
+        $prefetched = [];
+        foreach (array_values($candidates) as $i => $url) {
             if (count($images) >= $max) break;
-            $image = self::download($url, 15_000);
+            // Le foto si scaricano a gruppi di $max insieme (non tutte, per non riempire la memoria).
+            if (!array_key_exists($url, $prefetched)) $prefetched = SafeHttp::getMany(array_slice(array_values($candidates), $i, $max), 5_000_000, 8);
+            $image = self::download($url, 15_000, false, $prefetched);
             if (!$image || isset($hashes[md5($image['bytes'])])) continue;
             $size = @getimagesizefromstring($image['bytes']);
             if (!$size || $size[0] < 400 || $size[1] < 300) continue;
@@ -616,31 +627,65 @@ final class SiteReader
         return $pages;
     }
 
-    private static function css(DOMXPath $xpath, string $baseUrl, string $host): string
+    /**
+     * Pagine interne da provare per ogni gruppo: qualcuna in più del necessario, perché alcune risultano vuote.
+     * @param list<array{0: string, 1: string}> $links
+     * @return array<string, list<string>>
+     */
+    private static function pageCandidates(array $links, string $baseUrl, string $host): array
+    {
+        $seen = [rtrim($baseUrl, '/') => true];
+        $candidates = [];
+        foreach (self::PAGE_GROUPS as $group => [$pattern, $limit]) {
+            $candidates[$group] = [];
+            foreach ($links as [$rawHref, $label]) {
+                if (count($candidates[$group]) >= $limit + 1) break;
+                $href = self::absolute($baseUrl, $rawHref);
+                if (!$href || strtolower((string)parse_url($href, PHP_URL_HOST)) !== $host) continue;
+                // Si scarica l'indirizzo così com'è (la / finale evita un reindirizzamento su WordPress); senza / serve solo a non leggerlo due volte.
+                $pageUrl = (string)strtok($href, '#?');
+                $key = rtrim($pageUrl, '/');
+                if (isset($seen[$key]) || !preg_match($pattern, $key . ' ' . $label)) continue;
+                $seen[$key] = true;
+                $candidates[$group][] = $pageUrl;
+            }
+        }
+        return $candidates;
+    }
+
+    /** @return list<string> i fogli di stile del sito stesso (non quelli di librerie esterne) */
+    private static function stylesheetUrls(DOMXPath $xpath, string $baseUrl, string $host): array
+    {
+        $urls = [];
+        foreach ($xpath->query('//link[contains(@rel,"stylesheet")]/@href') as $node) {
+            if (count($urls) >= self::MAX_STYLESHEETS) break;
+            $sheetUrl = self::absolute($baseUrl, (string)$node->nodeValue);
+            if ($sheetUrl && strtolower((string)parse_url($sheetUrl, PHP_URL_HOST)) === $host) $urls[] = $sheetUrl;
+        }
+        return array_values(array_unique($urls));
+    }
+
+    /** @param list<string> $sheets i fogli di stile già scaricati */
+    private static function css(DOMXPath $xpath, array $sheets): string
     {
         $css = '';
         foreach ($xpath->query('//style') as $node) $css .= $node->textContent . "\n";
         foreach ($xpath->query('//*[@style]/@style') as $node) $css .= $node->nodeValue . ";\n";
-        $sheets = 0;
-        foreach ($xpath->query('//link[contains(@rel,"stylesheet")]/@href') as $node) {
-            if ($sheets >= self::MAX_STYLESHEETS) break;
-            $sheetUrl = self::absolute($baseUrl, (string)$node->nodeValue);
-            if (!$sheetUrl || strtolower((string)parse_url($sheetUrl, PHP_URL_HOST)) !== $host) continue;
-            try {
-                $css .= SafeHttp::get($sheetUrl, 800_000, 8)['body'] . "\n";
-                $sheets++;
-            } catch (SiteException) {}
-        }
-        return $css;
+        return $css . implode("\n", $sheets);
     }
 
     /** @return array{bytes: string, converted: bool}|null */
-    private static function download(string $url, int $minBytes, bool $allowSvg = false): ?array
+    private static function download(string $url, int $minBytes, bool $allowSvg = false, ?array $prefetched = null): ?array
     {
-        try {
-            $file = SafeHttp::get($url, 5_000_000, 8);
-        } catch (SiteException) {
-            return null;
+        if ($prefetched !== null) {
+            $file = $prefetched[$url] ?? null;
+            if ($file === null) return null;
+        } else {
+            try {
+                $file = SafeHttp::get($url, 5_000_000, 8);
+            } catch (SiteException) {
+                return null;
+            }
         }
         $mime = (new finfo(FILEINFO_MIME_TYPE))->buffer($file['body']) ?: '';
         if ($allowSvg && ($mime === 'image/svg+xml' || str_contains(substr($file['body'], 0, 2000), '<svg'))) return self::rasterize($file['body']);

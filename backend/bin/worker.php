@@ -622,8 +622,10 @@ function formatBody(array $variant): string
 
 echo "Worker avviato.\n";
 $nextRefresh = 0;
+// Con più worker in parallelo i controlli periodici li fa solo il primo (WORKER_PERIODIC=0 sugli altri).
+$periodic = getenv('WORKER_PERIODIC') !== '0';
 while (true) {
-    if (time() >= $nextRefresh) {
+    if ($periodic && time() >= $nextRefresh) {
         try {
             refreshCompetitors();
             refreshCompetitorAds();
@@ -638,10 +640,17 @@ while (true) {
         } catch (Throwable $e) {
             error_log((string)$e);
         }
+        // Email di promemoria a chi ha la prova o l'abbonamento in scadenza.
+        try {
+            if ($sent = SubscriptionReminders::run()) echo "Promemoria abbonamento inviati: {$sent}.\n";
+        } catch (Throwable $e) {
+            error_log((string)$e);
+        }
         $nextRefresh = time() + 3600;
     }
     $job = Jobs::claim();
-    if (!$job) { sleep(2); continue; }
+    // Coda vuota: si ricontrolla dopo mezzo secondo, così un lavoro appena chiesto parte quasi subito.
+    if (!$job) { usleep(500_000); continue; }
     echo "Lavoro #{$job['id']} ({$job['type']})...\n";
     // I lavori partiti da soli (rianalisi settimanali e giornaliere) possono usare le risposte AI salvate.
     $automatic = !empty($job['payload']['automatic']);

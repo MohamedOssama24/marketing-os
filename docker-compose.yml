@@ -13,7 +13,7 @@ services:
     networks: [marketing]
 
   # Applica le migrazioni del database e poi esegue i lavori in coda (generazione AI).
-  worker:
+  worker: &worker
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -27,6 +27,19 @@ services:
       - ./backend:/var/www/html
       - uploads:/var/www/storage
     networks: [marketing]
+
+  # Secondo worker: due lavori (analisi di siti, campagne, video) vanno avanti insieme invece di fare la fila.
+  # Non applica le migrazioni e non fa i controlli periodici: ci pensa il primo.
+  worker-2:
+    <<: *worker
+    command: ["php", "bin/worker.php"]
+    environment:
+      WORKER_PERIODIC: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_started
 
   nginx:
     image: nginx:1.27-alpine

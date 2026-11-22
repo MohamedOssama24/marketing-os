@@ -9,6 +9,7 @@ final class AdminController
 {
     /** Conteggi per organizzazione, calcolati con sottoquery per non moltiplicare le righe dei join. */
     private const ORG_SELECT = "SELECT o.id, o.name, o.slug, o.status, o.suspended_at, o.suspended_reason, o.created_at,
+            o.plan, o.trial_ends_at, o.subscription_status, o.current_period_end, o.cancel_at_period_end, o.stripe_customer_id,
             (SELECT u.email FROM users u WHERE u.organization_id=o.id AND u.role='owner' ORDER BY u.id LIMIT 1) AS owner_email,
             (SELECT COUNT(*) FROM users u WHERE u.organization_id=o.id) AS users_count,
             (SELECT MAX(u.last_login_at) FROM users u WHERE u.organization_id=o.id) AS last_login_at,
@@ -132,6 +133,31 @@ final class AdminController
         self::organization($id);
     }
 
+    /**
+     * Accesso deciso dall'amministratore: allunga la prova (extend_trial + days), la riapre da oggi (restart_trial + days)
+     * o regala l'accesso senza pagamento (free). Un abbonamento pagato su Stripe non viene toccato.
+     */
+    public static function updateSubscription(int $id): never
+    {
+        $admin = Auth::platformAdmin();
+        self::requireOrg($id);
+        $data = Http::body();
+        $action = Http::oneOf($data, 'action', ['extend_trial', 'restart_trial', 'free']);
+        $pdo = Database::connection();
+        if ($action === 'free') {
+            $pdo->prepare("UPDATE organizations SET plan='free' WHERE id=?")->execute([$id]);
+        } else {
+            $days = max(1, min(365, (int)($data['days'] ?? Subscription::trialDays())));
+            // extend_trial aggiunge giorni alla scadenza attuale (o a oggi, se è già passata).
+            $sql = $action === 'extend_trial'
+                ? "UPDATE organizations SET plan='trial', trial_ends_at=GREATEST(COALESCE(trial_ends_at, UTC_TIMESTAMP()), UTC_TIMESTAMP()) + INTERVAL ? DAY WHERE id=?"
+                : "UPDATE organizations SET plan='trial', trial_ends_at=UTC_TIMESTAMP() + INTERVAL ? DAY WHERE id=?";
+            $pdo->prepare($sql)->execute([$days, $id]);
+        }
+        self::log($admin, $id, 'admin.subscription_' . $action);
+        self::organization($id);
+    }
+
     /** Note interne sull'organizzazione, visibili solo agli amministratori. */
     public static function updateNotes(int $id): never
     {
@@ -163,6 +189,8 @@ final class AdminController
             $org[$key] = (int)$org[$key];
         }
         $org['id'] = (int)$org['id'];
+        $org['subscription'] = Subscription::summary($org);
+        unset($org['subscription_status'], $org['current_period_end'], $org['cancel_at_period_end'], $org['stripe_customer_id']);
         return $org;
     }
 }

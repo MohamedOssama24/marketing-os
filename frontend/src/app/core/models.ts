@@ -42,6 +42,27 @@ export interface User {
   role: Role;
   /** Amministratore della piattaforma: vede il pannello Admin con tutte le organizzazioni */
   is_platform_admin?: boolean;
+  /** Prova gratuita o abbonamento dell'agenzia (arriva da /me) */
+  subscription?: SubscriptionInfo;
+}
+
+export type SubscriptionPlan = 'monthly' | 'yearly';
+
+/** Accesso dell'agenzia a Marketing OS: prova gratuita, abbonamento pagato, accesso regalato o scaduto. */
+export interface SubscriptionInfo {
+  state: 'trial' | 'active' | 'expired' | 'free';
+  plan: 'trial' | SubscriptionPlan | 'free';
+  has_access: boolean;
+  trial_ends_at: string | null;
+  trial_days_left: number | null;
+  /** Stato su Stripe (active, past_due, canceled…) */
+  status: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  can_manage_billing: boolean;
+  /** Prezzi in centesimi */
+  prices: { monthly: number; yearly: number; currency: string };
+  payments_enabled: boolean;
 }
 
 export interface AdminOverview {
@@ -78,6 +99,9 @@ export interface AdminOrganization {
   jobs_this_month: number;
   storage_bytes: number;
   admin_notes?: string | null;
+  plan: SubscriptionInfo['plan'];
+  trial_ends_at: string | null;
+  subscription: SubscriptionInfo;
 }
 
 export interface AdminOrganizationDetail {
@@ -723,6 +747,17 @@ export interface Competitor {
   analyzing: boolean;
   ad_library_url: string;
   job_id: number | null;
+  /** Le 3 inserzioni attive più recenti dall'archivio di Meta (connected: l'archivio è collegato). */
+  ads: { connected: boolean; active: number; preview: CompetitorAdPreview[] };
+}
+
+export interface CompetitorAdPreview {
+  archive_id: string;
+  title: string;
+  text: string;
+  platforms: string[];
+  days: number;
+  url: string;
 }
 
 /** Cosa fa bene un concorrente, come fare meglio e lo spunto per un post del cliente. */

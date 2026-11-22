@@ -45,6 +45,13 @@ $router->add('POST', '/api/v1/auth/login', [AuthController::class, 'login']);
 $router->add('POST', '/api/v1/auth/logout', [AuthController::class, 'logout']);
 $router->add('GET', '/api/v1/me', [AuthController::class, 'me']);
 
+// Abbonamento a Marketing OS (prova gratuita, pagamento con Stripe). Il webhook è pubblico: lo firma Stripe.
+$router->add('GET', '/api/v1/subscription', [SubscriptionController::class, 'show']);
+$router->add('POST', '/api/v1/subscription/checkout', [SubscriptionController::class, 'checkout']);
+$router->add('POST', '/api/v1/subscription/confirm', [SubscriptionController::class, 'confirm']);
+$router->add('POST', '/api/v1/subscription/portal', [SubscriptionController::class, 'portal']);
+$router->add('POST', '/api/v1/stripe/webhook', [SubscriptionController::class, 'webhook']);
+
 $router->add('GET', '/api/v1/users', [UserController::class, 'index']);
 $router->add('POST', '/api/v1/users', [UserController::class, 'store']);
 
@@ -208,6 +215,7 @@ $router->add('GET', '/api/v1/admin/organizations/{id}', [AdminController::class,
 $router->add('PATCH', '/api/v1/admin/organizations/{id}', [AdminController::class, 'updateNotes']);
 $router->add('POST', '/api/v1/admin/organizations/{id}/suspend', [AdminController::class, 'suspend']);
 $router->add('POST', '/api/v1/admin/organizations/{id}/reactivate', [AdminController::class, 'reactivate']);
+$router->add('POST', '/api/v1/admin/organizations/{id}/subscription', [AdminController::class, 'updateSubscription']);
 
 try {
     $router->dispatch($method, $path);

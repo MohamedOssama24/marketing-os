@@ -9,6 +9,14 @@ export const authGuard: CanActivateFn = () => {
   return auth.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 
+/** App: senza token al login; a prova scaduta (o abbonamento non pagato) alla pagina dell'abbonamento. */
+export const appGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (!auth.isLoggedIn()) return router.createUrlTree(['/login']);
+  return auth.loadMe().pipe(map(() => (auth.subscriptionBlocked() ? router.createUrlTree(['/subscription']) : true)));
+};
+
 /** Pannello Admin: aspetta i dati dell'utente (dopo un ricaricamento non sono ancora in memoria). */
 export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);

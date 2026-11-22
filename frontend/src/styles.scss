@@ -754,6 +754,9 @@ kbd { font: inherit; font-size: 0.7rem; font-weight: 600; color: var(--muted); b
 
 /* Concorrenti: punti forti, confronto e proposta di stile */
 .competitor-look { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ads-preview { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.ad-mini { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; color: inherit; text-decoration: none; min-width: 0;
+  &:hover { border-color: var(--primary); background: var(--surface-2, transparent); } strong { color: var(--text); } .clamp { color: var(--text-2); } }
 .score-badge.small { width: 32px; height: 32px; border-radius: 9px; font-size: 0.82rem; }
 .strength { border-left: 3px solid var(--primary); padding: 2px 0 2px 10px; display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
   p { margin: 0; color: var(--text-2); } i { color: var(--primary); } select { font-size: 0.84rem; padding: 4px 8px; } }
@@ -932,3 +935,14 @@ kbd { font: inherit; font-size: 0.7rem; font-weight: 600; color: var(--muted); b
 /* Lingua */
 .lang-switch { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
 .auth-lang { position: absolute; top: 16px; right: 16px; }
+
+// Abbonamento nella scheda Admin dell'organizzazione
+.admin-sub { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+  h2 { margin: 0 0 4px; font-size: 1rem; } p { margin: 0; } .actions { display: flex; gap: 8px; flex-wrap: wrap; } }
+
+/* Promemoria di scadenza della prova / dell'abbonamento */
+.reminder-modal { position: relative; width: min(440px, 100%); padding: 32px 28px 24px; text-align: center; align-items: center; gap: 10px;
+  h2 { font-size: 1.25rem; } p { margin: 0; line-height: 1.5; } }
+.reminder-close { position: absolute; top: 12px; right: 12px; }
+.reminder-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--warning-soft); color: var(--warning); display: grid; place-items: center; margin-bottom: 4px; i { font-size: 28px; } }
+.reminder-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }

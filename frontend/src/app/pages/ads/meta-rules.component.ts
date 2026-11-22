@@ -187,7 +187,7 @@ export class MetaRulesComponent implements OnInit, OnDestroy {
     this.refreshing.set(true);
     this.error.set(null);
     this.sub.add(this.api.refreshMetaRules().pipe(
-      switchMap(({ job_id }) => timer(3000, 3000).pipe(switchMap(() => this.api.job(job_id)))),
+      switchMap(({ job_id }) => timer(1000, 1500).pipe(switchMap(() => this.api.job(job_id)))),
       takeWhile((job) => job.status === 'queued' || job.status === 'running', true),
     ).subscribe({
       next: (job) => {

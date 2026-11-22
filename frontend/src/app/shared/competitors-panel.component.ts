@@ -82,12 +82,34 @@ import { Competitor, CompetitorStrength, Project, apiErrorMessage } from '../cor
                 @if (a.opportunities.length) {
                   <div class="opportunities"><p class="kit-label"><i class="ti ti-bulb" aria-hidden="true"></i> Come distinguersi</p><ul class="small">@for (o of a.opportunities; track $index) { <li>{{ o }}</li> }</ul></div>
                 }
+                @if (c.job_status === 'failed') {
+                  <p class="muted small"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Ultimo aggiornamento non riuscito: vedi l'analisi precedente.</p>
+                }
               } @else if (c.job_status === 'failed') {
-                <p class="alert small">{{ c.job_error || 'Sito non leggibile.' }}</p>
+                <div class="alert small">
+                  <p>{{ c.job_error || 'Sito non leggibile.' }}</p>
+                  @if (auth.canEdit()) { <button class="btn ghost small" (click)="refresh(c)"><i class="ti ti-refresh" aria-hidden="true"></i> Riprova</button> }
+                </div>
+              }
             }
+            @if (c.ads.preview.length) {
+              <div class="ads-preview">
+                <p class="kit-label"><i class="ti ti-speakerphone" aria-hidden="true"></i> Le sue inserzioni · {{ c.ads.active }} {{ c.ads.active === 1 ? 'attiva' : 'attive' }}</p>
+                @for (ad of c.ads.preview; track ad.archive_id) {
+                  <a class="ad-mini" [href]="ad.url" target="_blank" rel="noopener" title="Apri l'inserzione nell'archivio di Meta">
+                    @if (ad.title) { <strong class="small ellipsis">{{ ad.title }}</strong> }
+                    <span class="small clamp">{{ ad.text || 'Inserzione senza testo (solo immagine o video).' }}</span>
+                    <span class="muted small">{{ platformsLabel(ad.platforms) }}{{ ad.platforms.length ? ' · ' : '' }}attiva da {{ ad.days }} {{ ad.days === 1 ? 'giorno' : 'giorni' }}</span>
+                  </a>
+                }
+              </div>
             }
             <footer class="muted small">
-              <a [href]="c.ad_library_url" target="_blank" rel="noopener"><i class="ti ti-brand-meta" aria-hidden="true"></i> Le sue inserzioni attive</a>
+              @if (c.ads.connected) {
+                <button class="link-btn small" (click)="showAllAds()"><i class="ti ti-brand-meta" aria-hidden="true"></i> {{ c.ads.active > 3 ? 'Vedi tutte le ' + c.ads.active + ' inserzioni' : 'Vedi tutte le inserzioni' }}</button>
+              } @else {
+                <a [href]="c.ad_library_url" target="_blank" rel="noopener"><i class="ti ti-brand-meta" aria-hidden="true"></i> Le sue inserzioni attive</a>
+              }
               @if (c.last_checked_at) { <span>Aggiornato il {{ c.last_checked_at.replace(' ', 'T') | date: 'd MMM' }}</span> }
             </footer>
           </article>
@@ -138,6 +160,16 @@ export class CompetitorsPanelComponent implements OnChanges {
         this.busy.set(false);
       },
     });
+  }
+
+  /** Porta alla sezione con tutte le inserzioni dei concorrenti, più in basso nella scheda cliente. */
+  showAllAds(): void {
+    document.getElementById('competitor-ads')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  platformsLabel(platforms: string[]): string {
+    const names: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', messenger: 'Messenger', audience_network: 'Audience Network', threads: 'Threads' };
+    return platforms.map((p) => names[p] ?? p).join(', ');
   }
 
   refresh(c: Competitor): void {

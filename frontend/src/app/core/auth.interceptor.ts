@@ -27,6 +27,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         auth.clearSession();
         router.navigate(['/login'], { queryParams: { sospeso: 1 } });
       }
+      // Prova scaduta durante l'uso: si aggiorna lo stato e si va alla pagina dell'abbonamento.
+      if (isApi && !isAuthCall && err.status === 402 && err.error?.error === 'subscription_required') {
+        auth.reloadMe().subscribe(() => router.navigate(['/subscription']));
+      }
       return throwError(() => err);
     }),
   );

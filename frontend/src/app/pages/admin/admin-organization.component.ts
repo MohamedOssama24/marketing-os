@@ -67,6 +67,28 @@ const JOB_LABELS: Record<string, string | undefined> = {
         </div>
       }
 
+      <div class="card admin-sub">
+        <div class="grow">
+          <h2><i class="ti ti-credit-card" aria-hidden="true"></i> Abbonamento</h2>
+          <p>
+            @switch (d.organization.subscription.state) {
+              @case ('trial') { In prova fino al {{ d.organization.subscription.trial_ends_at | date: 'd MMM yyyy, HH:mm' }} ({{ d.organization.subscription.trial_days_left }} giorni) }
+              @case ('active') { Abbonamento {{ d.organization.plan === 'yearly' ? 'annuale' : 'mensile' }} attivo · rinnovo il {{ d.organization.subscription.current_period_end | date: 'd MMM yyyy' }}{{ d.organization.subscription.cancel_at_period_end ? ' (disdetto)' : '' }} }
+              @case ('free') { Accesso gratuito (regalato) }
+              @case ('expired') { <strong>Scaduto</strong>: {{ d.organization.plan === 'trial' ? 'prova terminata il ' : 'abbonamento non pagato' }}{{ d.organization.plan === 'trial' ? (d.organization.subscription.trial_ends_at | date: 'd MMM yyyy') : '' }} }
+            }
+          </p>
+        </div>
+        @if (d.organization.subscription.state !== 'active') {
+          <div class="actions">
+            <button class="btn ghost small" (click)="run(api.adminSubscription(d.organization.id, 'extend_trial', 10))" [disabled]="busy()">+10 giorni di prova</button>
+            @if (d.organization.subscription.state !== 'free') {
+              <button class="btn ghost small" (click)="run(api.adminSubscription(d.organization.id, 'free'))" [disabled]="busy()">Regala accesso</button>
+            }
+          </div>
+        }
+      </div>
+
       <div class="metrics admin-metrics">
         <div class="metric"><span class="metric-icon"><i class="ti ti-users" aria-hidden="true"></i></span><span class="metric-label">Utenti</span><strong>{{ d.organization.users_count }}</strong></div>
         <div class="metric"><span class="metric-icon"><i class="ti ti-building-store" aria-hidden="true"></i></span><span class="metric-label">Clienti</span><strong>{{ d.organization.clients_count }}</strong></div>

@@ -1,13 +1,16 @@
 #!/bin/sh
-# Prima installazione su un server Ubuntu nuovo (Oracle Cloud Always Free), dalla cartella del progetto:
+# Prima installazione su un server Ubuntu nuovo (Oracle Cloud, Google Cloud…), dalla cartella del progetto:
 #   ./infrastructure/scripts/install.sh tuonome.duckdns.org
-# Si può rilanciare senza danni: non rigenera il .env e non tocca i dati. Guida in docs/DEPLOY-ORACLE.md.
+# Si può rilanciare senza danni: non rigenera il .env e non tocca i dati.
+# Guide in docs/DEPLOY-GOOGLE-CLOUD.md e docs/DEPLOY-ORACLE.md.
 set -eu
 DOMAIN="${1:?Uso: install.sh tuonome.duckdns.org}"
 cd "$(dirname "$0")/../.."
 
-echo "== Firewall interno di Ubuntu: porte 80 e 443 (sulle immagini Oracle è aperta solo SSH)"
-if ! sudo iptables -S INPUT | grep -q -- '--dport 443'; then
+echo "== Firewall interno di Ubuntu: porte 80 e 443 (solo sulle immagini Oracle, che bloccano tutto tranne SSH)"
+if command -v iptables >/dev/null 2>&1 \
+  && sudo iptables -S INPUT | grep -q -- '-j REJECT' \
+  && ! sudo iptables -S INPUT | grep -q -- '--dport 443'; then
   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
   sudo netfilter-persistent save || true

@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { adminGuard, authGuard, guestGuard, managerGuard } from './core/auth.guards';
+import { adminGuard, appGuard, authGuard, guestGuard, managerGuard } from './core/auth.guards';
 import { ShellComponent } from './layout/shell.component';
 
 export const routes: Routes = [
@@ -10,10 +10,12 @@ export const routes: Routes = [
   // Audit gratuito aperto dal potenziale cliente e portale del cliente: pubblici, senza accesso.
   { path: 'audit/:token', loadComponent: () => import('./pages/prospects/public-audit.component').then((m) => m.PublicAuditComponent) },
   { path: 'portal/:token', loadComponent: () => import('./pages/portal/portal.component').then((m) => m.PortalComponent) },
+  // Abbonamento: fuori dalla struttura dell'app perché si apre anche a prova scaduta.
+  { path: 'subscription', canActivate: [authGuard], loadComponent: () => import('./pages/subscription/subscription.component').then((m) => m.SubscriptionComponent) },
   {
     path: '',
     component: ShellComponent,
-    canActivate: [authGuard],
+    canActivate: [appGuard],
     children: [
       { path: 'dashboard', loadComponent: () => import('./pages/dashboard/dashboard.component').then((m) => m.DashboardComponent) },
       { path: 'clients', loadComponent: () => import('./pages/clients/clients.component').then((m) => m.ClientsComponent) },

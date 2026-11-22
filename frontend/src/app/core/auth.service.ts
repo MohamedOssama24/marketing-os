@@ -22,6 +22,11 @@ export class AuthService {
   readonly canManage = computed(() => ['owner', 'admin'].includes(this.user()?.role ?? ''));
   /** Amministratore della piattaforma (pannello Admin). Il server lo verifica comunque a ogni richiesta. */
   readonly isPlatformAdmin = computed(() => this.user()?.is_platform_admin === true);
+  /** Prova scaduta o abbonamento non pagato: l'app è bloccata finché non ci si abbona. */
+  readonly subscriptionBlocked = computed(() => {
+    const u = this.user();
+    return !!u?.subscription && !u.subscription.has_access && !u.is_platform_admin;
+  });
 
   get token(): string | null {
     return this.tokenSignal();
@@ -48,6 +53,15 @@ export class AuthService {
     );
   }
 
+  /** Ricarica l'utente dal server (es. dopo un pagamento o quando la prova scade). */
+  reloadMe(): Observable<unknown> {
+    if (!this.token) return of(null);
+    return this.http.get<{ data: { user: User } }>(`${API_URL}/me`).pipe(
+      tap((res) => this.user.set(res.data.user)),
+      catchError(() => of(null)),
+    );
+  }
+
   logout(): void {
     if (this.token) {
       // La revoca lato server è best-effort: la sessione locale viene chiusa comunque.
@@ -62,6 +76,8 @@ export class AuthService {
     this.user.set(null);
     this.api.clearCache();
     try { localStorage.removeItem(TOKEN_KEY); } catch {}
+    // Al prossimo accesso il promemoria di scadenza dell'abbonamento si rivede.
+    try { sessionStorage.removeItem('mos-subscription-reminder'); } catch {}
   }
 
   private storeSession(res: AuthResponse): void {

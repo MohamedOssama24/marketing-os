@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, filter, map, shareReplay, switchMap, take, throwError, timer } from 'rxjs';
 import {
   API_URL, Alert, ClientReport, ClientRequest, CompetitionStudy, Competitor, CompetitorAdsView, Occasion, StylePart, PortalData, PortalPost, PortalSettings, Profitability, Prospect, PublicAudit, ReviewInput, ReviewReply, StyleExample, TimeEntry, ReportStatus, AdImportResult, AdPlatform, AdsSetup, AdCheck, AdPlan, AdPlanInput, AdPlanStatus, MetaAssets, MetaConnection, MetaMonitor, MetaRulebook, AdSpend, AdSpendInput, AdSummary, BillingClient, InvoiceDetail, InvoiceMonth, LinkSummary, TrackedLink, AdminOrganization, AdminOrganizationDetail, AdminOverview, Asset, Brand, BrandInput, CalendarItem, CampaignRequest, ContentItem, Dashboard, GenerateRequest, Job,
-  DomainSuggestions, NewProject, Project, Role, SiteAnalysisState, TeamMember, Visual,
+  DomainSuggestions, NewProject, Project, Role, SiteAnalysisState, SubscriptionInfo, SubscriptionPlan, TeamMember, Visual,
 } from './models';
 
 type Data<T> = { data: T };
@@ -47,10 +47,10 @@ export class ApiService {
   suggestGoals = (brandId: number) => this.post<Job>(`/brands/${brandId}/goal-suggestions`);
   deleteProject = (id: number) => this.delete(`/projects/${id}`);
 
-  /** Segue un lavoro in background ogni 2 secondi finché termina (al massimo 4 minuti). */
+  /** Segue un lavoro in background ogni secondo finché termina (al massimo 4 minuti). */
   waitForJob(id: number): Observable<Job> {
-    return timer(800, 2000).pipe(
-      take(120),
+    return timer(500, 1000).pipe(
+      take(240),
       switchMap(() => this.job(id)),
       filter((job) => job.status === 'done' || job.status === 'failed'),
       take(1),
@@ -142,6 +142,14 @@ export class ApiService {
   adminSuspend = (id: number, reason: string) => this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/suspend`, { reason });
   adminReactivate = (id: number) => this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/reactivate`);
   adminNotes = (id: number, notes: string) => this.patch<AdminOrganizationDetail>(`/admin/organizations/${id}`, { admin_notes: notes });
+  adminSubscription = (id: number, action: 'extend_trial' | 'restart_trial' | 'free', days?: number) =>
+    this.post<AdminOrganizationDetail>(`/admin/organizations/${id}/subscription`, { action, days });
+
+  // Abbonamento dell'agenzia a Marketing OS
+  subscription = () => this.get<SubscriptionInfo>('/subscription');
+  subscriptionCheckout = (plan: SubscriptionPlan) => this.post<{ url: string }>('/subscription/checkout', { plan });
+  subscriptionConfirm = (sessionId: string) => this.post<SubscriptionInfo>('/subscription/confirm', { session_id: sessionId });
+  subscriptionPortal = () => this.post<{ url: string }>('/subscription/portal');
 
   // Sponsorizzate
   /** Righe del registro che toccano l'anno indicato. */

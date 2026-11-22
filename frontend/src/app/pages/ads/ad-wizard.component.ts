@@ -929,14 +929,14 @@ export class AdWizardComponent implements OnInit, OnDestroy {
   }
 
   private pollReview(id: number): void {
-    this.subs.add(timer(2000, 2000).pipe(
+    this.subs.add(timer(1000, 1000).pipe(
       switchMap(() => this.api.adPlan(id)),
       takeWhile((p) => p.review_status === 'queued' || p.review_status === 'running', true),
     ).subscribe((plan) => { this.saved.set(plan); this.changedPlan.emit(plan); }));
   }
 
   private pollMeta(id: number): void {
-    this.subs.add(timer(1500, 2000).pipe(
+    this.subs.add(timer(1000, 1000).pipe(
       switchMap(() => this.api.adPlan(id)),
       takeWhile((p) => p.meta.job_status === 'queued' || p.meta.job_status === 'running', true),
     ).subscribe((plan) => { this.saved.set(plan); this.changedPlan.emit(plan); }));
